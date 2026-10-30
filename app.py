@@ -9,6 +9,7 @@ import streamlit as st
 import config
 from agent import GREETING, HousingAgent
 from knowledge import Retriever
+from tickets import TicketStore
 
 st.set_page_config(page_title="Avila Housing Assistant", page_icon="🦅", layout="centered")
 
@@ -31,7 +32,7 @@ st.markdown("""
 @st.cache_resource
 def load_agent() -> HousingAgent:
     # cache_resource = load the handbook index once, not on every click
-    return HousingAgent(Retriever(config.KNOWLEDGE_FILE))
+    return HousingAgent(Retriever(config.KNOWLEDGE_FILE), TicketStore())
 
 
 agent = load_agent()
@@ -47,7 +48,8 @@ with st.sidebar:
     st.subheader("Try asking")
     examples = ["Can my friend stay over this weekend?",
                 "I got locked out of my room. Is there a fee?",
-                "What are quiet hours on Friday?"]
+                "The heater in my room isn't working",
+                "What's the status of my ticket?"]
     for ex in examples:
         if st.button(ex, use_container_width=True):
             st.session_state.pending = ex
@@ -57,10 +59,22 @@ with st.sidebar:
         st.session_state.clear()
         st.rerun()
 
+def ticket_card(t: dict) -> None:
+    colour = {"emergency": "#C0392B", "urgent": "#E67E22"}.get(t["urgency"], "#4B2A7B")
+    st.markdown(f"""<div style="border-left:6px solid {colour};background:rgba(75,42,123,.07);
+        padding:10px 14px;border-radius:8px;margin-top:6px">
+        <b>🎫 {t['code']}</b> &nbsp;·&nbsp; {t['status']} &nbsp;·&nbsp;
+        <span style="color:{colour};font-weight:700">{t['urgency'].upper()}</span><br>
+        {t['issue']}<br><small>{t['building']}, room {t['room']} · {t['category']}</small></div>""",
+                unsafe_allow_html=True)
+
+
 # Show the conversation so far
 for msg in st.session_state.chat:
     with st.chat_message(msg["role"], avatar="🦅" if msg["role"] == "assistant" else None):
         st.markdown(msg["content"])
+        if msg.get("ticket"):
+            ticket_card(msg["ticket"])
         if msg.get("sources"):
             st.markdown(f"<div class='sources'>Sources: {config.HANDBOOK_NAME}, page "
                         f"{', '.join(map(str, msg['sources']))}</div>", unsafe_allow_html=True)
@@ -72,5 +86,6 @@ if user_text:
     st.session_state.chat.append({"role": "user", "content": user_text})
     with st.spinner("Thinking..."):
         reply = agent.respond(user_text, st.session_state.agent_state)
-    st.session_state.chat.append({"role": "assistant", "content": reply.text, "sources": reply.sources})
+    st.session_state.chat.append({"role": "assistant", "content": reply.text,
+                                  "sources": reply.sources, "ticket": reply.ticket})
     st.rerun()

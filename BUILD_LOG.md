@@ -69,3 +69,29 @@ plural "s". After that, 4/4 test questions found the right page.
   isn't there, it says so and points to HOUSING@avila.edu instead of inventing a policy.
 
 **Tested:** chat screen loads, a lockout question finds the Lockouts page and cites it.
+
+---
+
+## v0.4-tickets - The agent creates real maintenance tickets
+
+**What:**
+- `tickets.py` - SQLite database of tickets. Each gets a friendly ID students can
+  say out loud (AV-1001) and a repair deadline from the handbook.
+- `agent.py` now handles 5 intents: question, maintenance, emergency, ticket_status, smalltalk.
+- The chat shows a ticket card (purple = normal, orange = urgent, red = emergency).
+
+**How a repair conversation works:**
+1. Student: "my sink is leaking" -> the analyzer pulls out `issue` + `category`.
+2. Python checks what's missing (building? room?) and asks ONLY for that.
+3. Every answer gets merged into a **draft** ticket kept in the conversation memory.
+4. When issue + building + room are all known -> ticket saved -> confirmation with
+   the handbook deadline (2 weeks regular, 2 days urgent/emergency).
+
+**Emergencies:** safety message FIRST (911 + Campus Safety 816-985-6079), then the
+ticket. A regex safety net (`EMERGENCY_PATTERN`) catches words like smoke, gas,
+flooding and sparks even if the AI misreads the message. An emergency can never be
+downgraded later in the conversation.
+
+**What broke:** asking "what's the status of my ticket?" without a number did
+nothing useful. **Fix:** the agent remembers the tickets created in this
+conversation (`my_tickets`) and looks up the latest one.
