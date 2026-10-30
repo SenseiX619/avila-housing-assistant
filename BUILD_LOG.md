@@ -26,3 +26,23 @@ git diff v0.2-knowledge v0.3-qa-chat   # see exactly what one step added
 
 **Stack (all free):** Python, Streamlit (UI), Groq (AI brain + speech-to-text),
 edge-tts (voice), SQLite (tickets), rank_bm25 (search).
+
+---
+
+## v0.2-knowledge - The agent learns the Housing Handbook
+
+**What:** `ingest.py` downloads Avila's public Housing Handbook PDF and splits it into
+small overlapping chunks (each remembers its page number). `knowledge.py` searches them.
+
+**Pipeline:** `PDF -> text per page -> 900-character chunks (150 overlap) -> BM25 keyword index`
+
+**Why:**
+- Page numbers on every chunk = the agent can cite "Handbook p. 13", so staff can trust it.
+- Overlap between chunks means a policy cut in half still appears whole somewhere.
+- BM25 keyword search instead of a vector database: no model downloads, no GPU,
+  instant, nothing to break on demo day. Easy to upgrade later.
+
+**What broke:** "I got locked out" found nothing, because the handbook says "Lockouts".
+**Fix:** a small `PHRASES` map that translates student slang into handbook words
+("locked out" -> "lockout", "girlfriend" -> "guest", "loud" -> "quiet"), plus cutting
+plural "s". After that, 4/4 test questions found the right page.
