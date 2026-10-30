@@ -1,0 +1,18 @@
+# Secrets - NEVER commit these
+.env
+.streamlit/secrets.toml
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Generated data (rebuilt by ingest.py / created by the app)
+data/tickets.db
+data/docs/*.pdf
+
+# Editors / OS
+.vscode/
+.DS_Store
+Thumbs.db
