@@ -51,7 +51,7 @@ with st.sidebar:
                 "The heater in my room isn't working",
                 "What's the status of my ticket?"]
     for ex in examples:
-        if st.button(ex, use_container_width=True):
+        if st.button(ex, width="stretch"):
             st.session_state.pending = ex
     st.divider()
     st.error(f"**Emergency?** Call 911 or Campus Safety at **{config.CAMPUS_SAFETY_PHONE}**")

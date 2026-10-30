@@ -95,3 +95,27 @@ downgraded later in the conversation.
 **What broke:** asking "what's the status of my ticket?" without a number did
 nothing useful. **Fix:** the agent remembers the tickets created in this
 conversation (`my_tickets`) and looks up the latest one.
+
+---
+
+## v0.5-dashboard - Staff see every ticket, live
+
+**What:** `pages/1_Staff_Dashboard.py` - a second page (Streamlit makes every file in
+`pages/` its own page). Shows:
+- Emergency alerts at the top in red
+- Counters: open, urgent/emergency, overdue, resolved
+- A ticket table with flags: 🚨 Emergency, 🟠 Urgent, ⚠️ OVERDUE, 🟣 On track, ✅ Resolved
+- Open tickets by building and by category
+- A form to move a ticket to In Progress / Resolved
+- Demo tools: load clearly-fake sample tickets, clear all (needs a checkbox first)
+
+**The killer feature:** overdue flags use Avila's OWN rules from the Housing Handbook
+(regular repairs within 2 weeks, emergencies within 2 days). Staff instantly see
+which promises are being broken, and which building keeps having problems.
+
+**Why it refreshes every 5 seconds:** `@st.fragment(run_every=5)` re-runs only the
+board, not the whole page. In the demo, a ticket made by voice on one screen pops
+up on the other screen by itself.
+
+**What broke:** Streamlit warned that `use_container_width` is being retired.
+**Fix:** switched to `width="stretch"` and required Streamlit 1.50+.
