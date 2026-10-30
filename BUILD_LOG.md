@@ -46,3 +46,26 @@ small overlapping chunks (each remembers its page number). `knowledge.py` search
 **Fix:** a small `PHRASES` map that translates student slang into handbook words
 ("locked out" -> "lockout", "girlfriend" -> "guest", "loud" -> "quiet"), plus cutting
 plural "s". After that, 4/4 test questions found the right page.
+
+---
+
+## v0.3-qa-chat - Students can ask questions in a chat
+
+**What:**
+- `llm.py` - the only file that talks to the AI (Groq). If the main model is busy,
+  it automatically retries with a smaller backup model.
+- `agent.py` - the brain. Every message goes through **ANALYZE** (AI returns JSON:
+  intent, language, English search keywords) then **ACT** (Python decides what to do).
+- `app.py` - the Streamlit chat screen in Avila purple and gold, with example
+  questions and the Campus Safety number always visible.
+- `fake_llm.py` - a rule-based stand-in so we can test without internet (`FAKE_LLM=1`).
+
+**Why:**
+- The AI understands messy human language; Python follows the rules. Splitting
+  "understand" from "decide" makes the agent predictable.
+- The analyzer writes search keywords in English, so a question in Spanish or Urdu
+  still finds the right handbook page. The answer comes back in the student's language.
+- The agent only answers from handbook excerpts and cites the page. If the answer
+  isn't there, it says so and points to HOUSING@avila.edu instead of inventing a policy.
+
+**Tested:** chat screen loads, a lockout question finds the Lockouts page and cites it.
