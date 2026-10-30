@@ -27,7 +27,7 @@ def respond(messages, json_mode):
         msg = user.split("LATEST MESSAGE:")[-1].lower()
         draft_open = '"issue": "' in user.split("CURRENT TICKET DRAFT:")[-1].split("LATEST MESSAGE:")[0]
         building = next((b for b in config.BUILDINGS if b.split()[0].lower() in msg), None)
-        room = re.search(r"\b(\d{3,4}[a-z]?)\b", msg)
+        room = re.search(r"\b([a-z]?\d{2,4}[a-z]?)\b", msg)
         ticket_id = re.search(r"av-?\d{4}", msg)
         if ticket_id or "status" in msg or "my ticket" in msg:
             intent = "ticket_status"

@@ -119,3 +119,24 @@ up on the other screen by itself.
 
 **What broke:** Streamlit warned that `use_container_width` is being retired.
 **Fix:** switched to `width="stretch"` and required Streamlit 1.50+.
+
+---
+
+## v0.6-voice - Students can just talk
+
+**What:** `voice.py` + a mic recorder in the chat.
+- **Ears:** the recording goes to Groq Whisper (free), which turns speech into text
+  and detects the language by itself.
+- **Mouth:** the agent's reply goes to edge-tts (free) and plays back automatically.
+- Voice tickets are tagged "Voice" on the staff dashboard.
+
+**Why it's built this way:** voice is just a second door into the SAME agent brain.
+`agent.respond()` doesn't care if the message was typed or spoken. So if the mic or
+speaker fails on stage, switch to typing and everything still works.
+
+**Details that matter:**
+- Ticket IDs are read digit by digit ("A V 1 0 0 3") so students can write them down.
+- After each recording, the recorder gets a new key, so it resets and the same
+  recording is never processed twice.
+- If text-to-speech fails (no internet), `speak()` returns None and the app stays
+  text-only instead of crashing.

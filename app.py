@@ -7,6 +7,7 @@ Run it with:   streamlit run app.py
 import streamlit as st
 
 import config
+import voice
 from agent import GREETING, HousingAgent
 from knowledge import Retriever
 from tickets import TicketStore
@@ -54,6 +55,7 @@ with st.sidebar:
         if st.button(ex, width="stretch"):
             st.session_state.pending = ex
     st.divider()
+    st.toggle("🔊 Speak replies out loud", value=True, key="speak_replies")
     st.error(f"**Emergency?** Call 911 or Campus Safety at **{config.CAMPUS_SAFETY_PHONE}**")
     if st.button("Start a new conversation"):
         st.session_state.clear()
@@ -79,13 +81,35 @@ for msg in st.session_state.chat:
             st.markdown(f"<div class='sources'>Sources: {config.HANDBOOK_NAME}, page "
                         f"{', '.join(map(str, msg['sources']))}</div>", unsafe_allow_html=True)
 
-typed = st.chat_input("Type your question...")
-user_text = typed or st.session_state.pop("pending", None)
+# Play the latest spoken reply once (pop = it won't replay on the next click)
+if audio := st.session_state.pop("reply_audio", None):
+    st.audio(audio, format="audio/mp3", autoplay=True)
+
+# ---------- Two doors into the same agent: voice and text ----------
+st.session_state.setdefault("mic_round", 0)
+recording = st.audio_input("🎤 Tap to talk - describe your problem in plain English (or any language)",
+                           key=f"mic_{st.session_state.mic_round}")
+typed = st.chat_input("...or type your question here")
+
+user_text, channel = None, "text"
+if recording is not None:
+    with st.spinner("Listening..."):
+        try:
+            user_text = voice.transcribe(recording.getvalue())
+            channel = "voice"
+        except Exception as err:
+            st.error(f"Couldn't understand the recording ({err}). Try again or type instead.")
+    st.session_state.mic_round += 1          # new key = fresh, empty recorder next time
+elif typed or st.session_state.get("pending"):
+    user_text = typed or st.session_state.pop("pending")
 
 if user_text:
-    st.session_state.chat.append({"role": "user", "content": user_text})
+    st.session_state.chat.append({"role": "user", "content": ("🎤 " if channel == "voice" else "") + user_text})
     with st.spinner("Thinking..."):
-        reply = agent.respond(user_text, st.session_state.agent_state)
+        reply = agent.respond(user_text, st.session_state.agent_state, channel=channel)
     st.session_state.chat.append({"role": "assistant", "content": reply.text,
                                   "sources": reply.sources, "ticket": reply.ticket})
+    if st.session_state.get("speak_replies", True):
+        with st.spinner("Speaking..."):
+            st.session_state.reply_audio = voice.speak(reply.text)
     st.rerun()
