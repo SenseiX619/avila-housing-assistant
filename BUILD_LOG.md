@@ -140,3 +140,20 @@ speaker fails on stage, switch to typing and everything still works.
   recording is never processed twice.
 - If text-to-speech fails (no internet), `speak()` returns None and the app stays
   text-only instead of crashing.
+
+---
+
+## v0.7-polish - Looked at it in a real browser and fixed what was off
+
+We opened both pages in a headless browser and took screenshots. Three problems:
+
+1. **The purple banner was missing on the chat page.** Streamlit hides a markdown block
+   that starts with a `<style>` tag. **Fix:** put the styles and the banner in two
+   separate `st.markdown` calls.
+2. **The sidebar menu said "app"** instead of a real page name. **Fix:** `app.py` is now a
+   small "front door" using `st.navigation`, and the two screens moved into `views/`
+   ("Student Assistant" and "Staff Dashboard").
+3. **The dashboard table hid "Due by" off-screen.** **Fix:** reordered the columns so
+   the important ones (flag, issue, building, room, priority, due date) come first.
+
+Lesson: tests passing is not the same as the app looking right. Always look at it.

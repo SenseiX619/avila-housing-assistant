@@ -1,7 +1,6 @@
 """
-Staff Dashboard - what Residential Life staff and GAs see.
+views/staff_dashboard.py - what Residential Life staff and GAs see.
 
-Streamlit turns every file in the pages/ folder into its own page in the sidebar.
 This page refreshes itself every 5 seconds, so a ticket a student creates by
 voice or chat shows up here live.
 """
@@ -14,7 +13,6 @@ import streamlit as st
 import config
 from tickets import STATUSES, TicketStore
 
-st.set_page_config(page_title="Housing Staff Dashboard", page_icon="🛠️", layout="wide")
 store = TicketStore()
 PURPLE = "#4B2A7B"
 
@@ -78,13 +76,13 @@ def live_board() -> None:
         "Issue": t["issue"],
         "Building": t["building"],
         "Room": t["room"],
-        "Category": t["category"],
         "Priority": t["urgency"].title(),
-        "Status": t["status"],
-        "Reported": datetime.fromisoformat(t["created_at"]).strftime("%b %d, %I:%M %p"),
         "Due by": datetime.fromisoformat(t["due_at"]).strftime("%b %d"),
+        "Status": t["status"],
         "Via": t["channel"].title(),
+        "Category": t["category"],
         "Language": t["language"],
+        "Reported": datetime.fromisoformat(t["created_at"]).strftime("%b %d, %I:%M %p"),
     } for t in rows])
     st.dataframe(table, hide_index=True, width="stretch")
 
