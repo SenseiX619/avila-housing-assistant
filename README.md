@@ -1,0 +1,140 @@
+# 🦅 Avila Housing Assistant
+
+A free, 24/7 AI assistant for Avila University students living on campus. Students
+**type or talk** to it in plain English (or any language), and it:
+
+- **Answers housing questions** from the official 2026-27 Housing Handbook, citing the page
+- **Creates maintenance tickets** by asking only for what's missing (building, room, issue)
+- **Puts safety first:** emergencies get 911 + Campus Safety (816-985-6079) before anything else
+- **Checks ticket status** ("what's happening with AV-1003?")
+
+Housing staff get a **live dashboard** that flags overdue repairs using Avila's own
+handbook deadlines (urgent: 2 days, regular: 2 weeks).
+
+Built by Avila AI students. Total running cost for the prototype: **$0**.
+
+---
+
+## How it works
+
+```mermaid
+flowchart LR
+    S[Student] -->|types| T[Text chat]
+    S -->|speaks| W[Groq Whisper<br/>speech to text]
+    W --> A
+    T --> A[ANALYZE<br/>AI returns JSON:<br/>intent, language,<br/>keywords, ticket details]
+    A --> D{Python decides}
+    D -->|question| K[Search Housing Handbook<br/>BM25] --> Ans[Answer with page citation]
+    D -->|maintenance| M[Ask for missing details] --> DB[(SQLite tickets)]
+    D -->|emergency| E[911 + Campus Safety first] --> DB
+    D -->|ticket status| DB
+    DB --> Dash[Staff Dashboard<br/>live, overdue flags]
+    Ans --> V[edge-tts<br/>spoken reply]
+```
+
+**The key idea:** the AI *understands* (messy language, any language), and plain Python
+*decides* (search, ask, save). That keeps the agent predictable.
+
+| File | Job |
+|---|---|
+| `app.py` | Front door: sets up the two pages |
+| `views/student_chat.py` | Student screen: voice + text chat, ticket cards |
+| `views/staff_dashboard.py` | Staff screen: live tickets, overdue flags, charts |
+| `agent.py` | The brain: analyze, then act (5 intents) |
+| `knowledge.py` / `ingest.py` | Handbook PDF -> chunks -> keyword search |
+| `tickets.py` | SQLite database of tickets + handbook deadlines |
+| `voice.py` | Speech in (Groq Whisper) and speech out (edge-tts) |
+| `llm.py` | The only file that talks to the AI (Groq, with a backup model) |
+| `config.py` | Every setting: buildings, phone numbers, models, deadlines |
+| `BUILD_LOG.md` | How we built it, step by step: what, why, what broke |
+
+---
+
+## Run it on Windows
+
+1. Get a free Groq API key at **console.groq.com** (no credit card).
+2. Double-click **`setup.bat`** (installs everything + reads the handbook, 1-3 minutes).
+3. Open **`.env`** in VS Code, paste your key after `GROQ_API_KEY=`, save.
+4. Double-click **`run.bat`**. It checks everything, then opens the app in your browser.
+
+Prefer the terminal? In VS Code's terminal (Command Prompt):
+```
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+python ingest.py
+python check_setup.py
+streamlit run app.py
+```
+
+If the handbook download fails, open the handbook link from `config.py` in your browser,
+save the PDF into `data/docs/`, and run `python ingest.py` again.
+
+---
+
+## Demo script (Nov 4)
+
+Open the **Student Assistant** on one screen and the **Staff Dashboard** on the other
+(click "Load sample tickets" first so the dashboard isn't empty).
+
+1. **Question:** "Can my friend stay over this weekend?" -> answer + handbook page.
+2. **Voice repair:** tap the mic, say *"The heater in my room isn't working."*
+   The agent asks for your building and room, you answer, it creates a ticket
+   and reads the number out loud. **Switch screens: the ticket is already on the dashboard.**
+3. **Another language:** type *"Mi baño tiene una fuga en Wylie 108"*. The answer comes
+   back in Spanish; the ticket is saved in English for staff.
+4. **Safety:** "There's smoke coming from an outlet in Buchanan 302" -> 911 and Campus Safety first.
+5. **Dashboard:** point at the ⚠️ OVERDUE flags: "these are Avila's own deadlines from the handbook."
+
+**Before you present:** run `run.bat` 30 minutes early, test the mic in the room, and keep
+a screen recording of the demo as a backup.
+
+---
+
+## Deploy it online for free (Streamlit Community Cloud)
+
+1. Run `python ingest.py` locally, then commit `data/knowledge.json` and push to GitHub.
+2. Go to **share.streamlit.io**, sign in with GitHub, choose this repo and `app.py`.
+3. In the app's **Settings -> Secrets**, add: `GROQ_API_KEY = "your-key"`
+4. Deploy. Free apps sleep after 12 hours without visitors, so open it before the demo.
+
+Note: tickets on the free cloud are stored in a file that resets when the app restarts.
+That's fine for a demo; a real Avila rollout would use a hosted database.
+
+---
+
+## Privacy and safety
+
+- Uses **public** Avila information only. No student records, grades or IDs (FERPA-aware by design).
+- Demo tickets are fake. Free AI tiers may use what you send to improve their products, so
+  never type real personal information during demos.
+- The agent only answers from the handbook and says "I'm not sure" instead of inventing policies.
+- API keys live in `.env`, which `.gitignore` keeps off GitHub.
+
+---
+
+## Time-travel through the build
+
+Every step is a Git tag. Read `BUILD_LOG.md` alongside:
+
+| Tag | Step |
+|---|---|
+| `v0.1-setup` | Project skeleton, config, secrets handling |
+| `v0.2-knowledge` | Handbook PDF -> searchable chunks with page numbers |
+| `v0.3-qa-chat` | Q&A agent + chat screen |
+| `v0.4-tickets` | Maintenance tickets, emergencies, status checks |
+| `v0.5-dashboard` | Live staff dashboard with overdue flags |
+| `v0.6-voice` | Talk to it, hear it answer |
+| `v0.7-polish` | Fixes after looking at it in a browser |
+| `v1.0-demo` | Windows setup scripts, self-check, README |
+
+```
+git checkout v0.3-qa-chat          # see the app as it was at that step
+git diff v0.3-qa-chat v0.4-tickets # see exactly what one step added
+git checkout main                  # back to the latest
+```
+
+## What's next (the agency roadmap)
+
+Admissions assistant · International student assistant · Financial aid FAQ ·
+real phone line (call-in voice agent) · Kansas City small-business receptionists.

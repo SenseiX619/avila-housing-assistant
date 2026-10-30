@@ -157,3 +157,25 @@ We opened both pages in a headless browser and took screenshots. Three problems:
    the important ones (flag, issue, building, room, priority, due date) come first.
 
 Lesson: tests passing is not the same as the app looking right. Always look at it.
+
+---
+
+## v1.0-demo - Ready for the Nov 4 presentation
+
+**What:**
+- `setup.bat` - one double-click: creates `.venv`, installs libraries, downloads the handbook.
+- `run.bat` - runs `check_setup.py` first, then starts the app.
+- `check_setup.py` - checks the handbook, the Groq key, a live AI reply and voice,
+  and prints a plain-English fix for anything that fails.
+- `README.md` - architecture diagram, setup, the demo script, free deployment, privacy notes.
+- `.gitattributes` - keeps Windows line endings in the `.bat` files so they always run.
+
+**Why a self-check:** on demo day you want to know in 10 seconds whether the key works
+and you're online, not find out live in front of the audience.
+
+**Final test (offline stand-in AI):** repair report across 3 messages -> ticket;
+smoke report -> safety first + emergency ticket + red alert on the dashboard;
+status lookup; handbook question with page citation. All passed.
+
+**Not yet tested with the real AI** (blocked from the build machine): Groq answers,
+Whisper transcription and edge-tts voices. `check_setup.py` verifies these on your PC.
