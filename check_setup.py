@@ -34,8 +34,8 @@ report(bool(key) and "paste-your" not in key, "Groq API key found in .env",
 if ok:
     try:
         import llm
-        answer = llm.chat([{"role": "user", "content": "Reply with just the word: ready"}], max_tokens=5)
-        report("ready" in answer.lower(), f"Groq AI responds ({config.CHAT_MODEL})",
+        answer = llm.chat([{"role": "user", "content": "Reply with just the word: ready"}], max_tokens=300)
+        report("ready" in answer.lower(), f"Groq AI responds (using {llm.chat_models()[0]})",
                f"unexpected reply: {answer!r}")
     except Exception as err:
         report(False, "Groq AI responds", f"{err}  - check the key is correct and you're online")

@@ -52,8 +52,15 @@ def _secret(name: str, default: str = "") -> str:
 
 
 GROQ_API_KEY = _secret("GROQ_API_KEY")
-CHAT_MODEL = "llama-3.3-70b-versatile"      # main brain: smart + fast
-BACKUP_MODEL = "llama-3.1-8b-instant"       # used automatically if the main one is busy
+# Models to try, best first. On startup the app asks Groq which models this key can
+# actually use and skips the rest - so if Groq renames or retires one, nothing breaks.
+# (Nov 2026: Groq moved the Llama models to Enterprise-only, so free keys use gpt-oss.)
+CHAT_MODELS = [
+    "openai/gpt-oss-120b",        # main brain: smartest free model
+    "openai/gpt-oss-20b",         # backup: smaller, used if the main one is busy
+    "qwen/qwen3.8-27b",           # preview model, last resort
+    "llama-3.3-70b-versatile",    # only works on Enterprise keys
+]
 SPEECH_MODEL = "whisper-large-v3-turbo"     # voice -> text
 TTS_VOICE = "en-US-AvaMultilingualNeural"   # text -> voice (free edge-tts, speaks many languages)
 

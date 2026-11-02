@@ -24,7 +24,7 @@ git diff v0.2-knowledge v0.3-qa-chat   # see exactly what one step added
 - Facts like building names, the Campus Safety number and repair deadlines
   come straight from the public 2026-27 Avila Housing Handbook.
 
-**Stack (all free):** Python, Streamlit (UI), Groq (AI brain + speech-to-text),
+**Stack (all free):** Python, Streamlit (UI), Groq (gpt-oss AI brain + Whisper speech-to-text),
 edge-tts (voice), SQLite (tickets), rank_bm25 (search).
 
 ---
@@ -179,3 +179,23 @@ status lookup; handbook question with page citation. All passed.
 
 **Not yet tested with the real AI** (blocked from the build machine): Groq answers,
 Whisper transcription and edge-tts voices. `check_setup.py` verifies these on your PC.
+
+---
+
+## v1.1-models - First real run: Groq changed its models
+
+**What broke:** the first run on Sensei's PC said the key worked, but the AI failed with
+`model_not_found`. Groq had moved the Llama models we picked to **Enterprise-only**,
+so free keys can't use them anymore.
+
+**Fix:**
+- Switched to Groq's free production models: `openai/gpt-oss-120b` (main) and
+  `openai/gpt-oss-20b` (backup).
+- `config.CHAT_MODELS` is now a ranked list. On startup `llm.chat_models()` asks Groq
+  which models this key can actually use and skips the rest. If Groq renames a
+  model again, the app quietly uses the next one instead of crashing on stage.
+- gpt-oss "thinks" before it answers, so we set `reasoning_effort: low` (faster) and
+  raised the token budget, so the thinking can't eat the whole answer.
+
+**Lesson:** never hard-code one AI model. Providers rename and retire them all the time.
+Keep a ranked list and check what's actually available.
