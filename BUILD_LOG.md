@@ -199,3 +199,32 @@ so free keys can't use them anymore.
 
 **Lesson:** never hard-code one AI model. Providers rename and retire them all the time.
 Keep a ranked list and check what's actually available.
+
+---
+
+## v1.2-voice-fixes - First real voice test: "she only says hi"
+
+**What broke:** Sensei said "hey, my heater isn't working" into the mic, and every time the
+assistant answered with the same greeting. No ticket was created.
+
+**Two likely causes, both fixed:**
+1. **Silent or noisy recordings.** When a mic picks up nothing, Whisper "hears" phantom
+   words like "Thank you." The AI then sees small talk and greets you again.
+   **Fix:** `voice.py` measures how loud the recording is. If it's silent, or Whisper only
+   returns a known phantom phrase, the student sees "🎤 the recording was silent - check
+   your mic" instead of a confusing reply. Whisper also gets a hint with our building names.
+2. **The AI mislabelling repairs as small talk.** **Fix:** a second safety net,
+   `REPAIR_PATTERN` (like the emergency one). If the message clearly describes something
+   broken ("isn't working", "leaking", "won't flush"...), it becomes a repair no matter
+   what the AI said. Long messages are never treated as just "hi".
+
+**Also changed (Sensei's call):**
+- The assistant no longer talks. The student speaks, the assistant writes. The speaker
+  toggle and the text-to-speech step are gone from the chat screen.
+- A repeat "hi" gets a short reply instead of the full introduction every time.
+- `data/conversation_log.jsonl` records each turn: what was heard, what the AI understood,
+  what we did. Now "why did it say that?" has an answer.
+- `run.bat` skips Streamlit's one-time "enter your email" prompt on teammates' PCs.
+
+**Tested:** with a deliberately bad AI that labels everything small talk, the heater
+message still became ticket AV-1001; a silent recording shows the mic warning.

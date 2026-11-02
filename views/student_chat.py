@@ -52,7 +52,6 @@ with st.sidebar:
         if st.button(ex, width="stretch"):
             st.session_state.pending = ex
     st.divider()
-    st.toggle("🔊 Speak replies out loud", value=True, key="speak_replies")
     st.error(f"**Emergency?** Call 911 or Campus Safety at **{config.CAMPUS_SAFETY_PHONE}**")
     if st.button("Start a new conversation"):
         st.session_state.clear()
@@ -78,25 +77,30 @@ for msg in st.session_state.chat:
             st.markdown(f"<div class='sources'>Sources: {config.HANDBOOK_NAME}, page "
                         f"{', '.join(map(str, msg['sources']))}</div>", unsafe_allow_html=True)
 
-# Play the latest spoken reply once (pop = it won't replay on the next click)
-if audio := st.session_state.pop("reply_audio", None):
-    st.audio(audio, format="audio/mp3", autoplay=True)
+# A mic problem from the last attempt (shown once, above the recorder)
+if mic_problem := st.session_state.pop("mic_problem", None):
+    st.warning(f"🎤 {mic_problem}")
 
 # ---------- Two doors into the same agent: voice and text ----------
+# The student talks; the assistant always answers in writing.
 st.session_state.setdefault("mic_round", 0)
-recording = st.audio_input("🎤 Tap to talk - describe your problem in plain English (or any language)",
+recording = st.audio_input("🎤 Tap to talk - say your question or what's broken, then tap stop",
                            key=f"mic_{st.session_state.mic_round}")
 typed = st.chat_input("...or type your question here")
 
 user_text, channel = None, "text"
 if recording is not None:
+    st.session_state.mic_round += 1          # new key = fresh, empty recorder next time
     with st.spinner("Listening..."):
         try:
             user_text = voice.transcribe(recording.getvalue())
             channel = "voice"
+        except voice.NoSpeechHeard as err:
+            st.session_state.mic_problem = str(err)
         except Exception as err:
-            st.error(f"Couldn't understand the recording ({err}). Try again or type instead.")
-    st.session_state.mic_round += 1          # new key = fresh, empty recorder next time
+            st.session_state.mic_problem = f"Couldn't process the recording ({err}). Try again or type instead."
+    if not user_text:
+        st.rerun()
 elif typed or st.session_state.get("pending"):
     user_text = typed or st.session_state.pop("pending")
 
@@ -106,7 +110,4 @@ if user_text:
         reply = agent.respond(user_text, st.session_state.agent_state, channel=channel)
     st.session_state.chat.append({"role": "assistant", "content": reply.text,
                                   "sources": reply.sources, "ticket": reply.ticket})
-    if st.session_state.get("speak_replies", True):
-        with st.spinner("Speaking..."):
-            st.session_state.reply_audio = voice.speak(reply.text)
     st.rerun()

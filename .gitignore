@@ -16,3 +16,4 @@ data/docs/*.pdf
 .vscode/
 .DS_Store
 Thumbs.db
+data/conversation_log.jsonl

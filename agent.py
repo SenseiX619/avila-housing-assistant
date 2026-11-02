@@ -19,6 +19,7 @@ understand and Python decide makes the agent predictable - important when a
 university is trusting it with students.
 """
 
+import json
 import re
 from dataclasses import dataclass, field
 
@@ -105,6 +106,32 @@ EMERGENCY_PATTERN = re.compile(
     re.I)
 
 
+REPAIR_PATTERN = re.compile(
+    r"\b(broken|broke|not working|isn'?t working|doesn'?t work|won'?t (turn on|work|lock|close|open|flush|drain)|"
+    r"stopped working|leak(s|ing)?|clogged|no (heat|hot water|water|power|internet|wifi)|"
+    r"(heater|heating|ac|a/c|air conditioning|sink|toilet|shower|light|outlet|fridge|door|lock|window)\b.{0,25}"
+    r"\b(broken|out|dead|stuck|loud|dripping|not))", re.I)
+
+SHORT_HELLO = "Hey! What can I help you with - a housing question, or something in your room that needs fixing?"
+
+LOG_FILE = config.DATA_DIR / "conversation_log.jsonl"
+
+
+def log_turn(message: str, channel: str, analysis: dict, reply: "AgentReply") -> None:
+    """Write each turn to data/conversation_log.jsonl - what the student said, what the AI understood,
+    and what we did. Invaluable for debugging ("why did it say that?"). Demo data only - no real students."""
+    try:
+        from datetime import datetime
+        row = {"time": datetime.now().isoformat(timespec="seconds"), "channel": channel, "message": message,
+               "analysis": analysis, "reply_kind": reply.kind, "reply": reply.text[:300],
+               "ticket": reply.ticket["code"] if reply.ticket else None}
+        LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with open(LOG_FILE, "a", encoding="utf-8") as f:
+            f.write(json.dumps(row, ensure_ascii=False) + "\n")
+    except Exception:
+        pass                                  # logging must never break the chat
+
+
 def normalize_building(value: str | None) -> str | None:
     if not value:
         return None
@@ -127,11 +154,22 @@ class HousingAgent:
         """state = this student's conversation memory (kept by the app between messages)."""
         state.setdefault("history", [])
         state.setdefault("my_tickets", [])
+        analysis = {}
         try:
             analysis = self._analyze(message, state)
             language = analysis.get("language") or "English"
-            intent = analysis.get("intent", "question")
+            intent = str(analysis.get("intent") or "question").strip().lower()
             details = analysis.get("ticket") or {}
+
+            # Safety net #2: the AI sometimes files a repair under "smalltalk" or "question".
+            # If the message clearly describes something broken, treat it as a repair anyway.
+            if intent in ("smalltalk", "question") and REPAIR_PATTERN.search(message):
+                intent = "maintenance"
+                if not details.get("issue"):
+                    details = dict(details, issue=message.strip()[:120])
+            # Long messages are never just "hi" - answer them from the handbook instead.
+            if intent == "smalltalk" and len(message.split()) > 6:
+                intent = "question"
 
             if analysis.get("cancel") and state.get("draft"):
                 state["draft"] = None
@@ -143,7 +181,9 @@ class HousingAgent:
             elif intent == "maintenance" or (state.get("draft") and any(details.get(k) for k in ("building", "room"))):
                 reply = self._handle_maintenance(message, details, language, state, channel)
             elif intent == "smalltalk":
-                reply = AgentReply(self._say(GREETING, language), kind="smalltalk")
+                # Only the very first hello gets the full introduction.
+                text = GREETING if len(state["history"]) < 2 else SHORT_HELLO
+                reply = AgentReply(self._say(text, language), kind="smalltalk")
             else:
                 reply = self._answer_question(message, analysis.get("search_query") or message, language, state)
         except Exception as err:
@@ -155,6 +195,7 @@ class HousingAgent:
         state["history"] += [{"role": "user", "content": message},
                              {"role": "assistant", "content": reply.text}]
         state["history"] = state["history"][-12:]      # keep the last 6 exchanges
+        log_turn(message, channel, analysis, reply)
         return reply
 
     # ---------- step 1: understand ----------
