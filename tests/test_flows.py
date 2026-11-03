@@ -424,6 +424,21 @@ class Screens(unittest.TestCase):
         self.assertEqual(store.create("Thompson Hall", "214", "New")["code"], "AV-1007")
         self.assertTrue(any("next new ticket is AV-1007" in s.value for s in board.success))
 
+    def test_phone_qr_code_on_the_dashboard(self):
+        """phones: with an online address, the dashboard shows a QR code to the student page"""
+        with mock.patch.dict(os.environ, {"APP_URL": "https://avila-housing.streamlit.app/staff_dashboard"}):
+            import phone_link
+            self.assertEqual(phone_link.app_url(), "https://avila-housing.streamlit.app")
+            captions = " ".join(c.value for c in self.dashboard().caption)
+        self.assertIn("Scan to try it on your phone", captions)
+        self.assertIn("https://avila-housing.streamlit.app", captions)
+
+    def test_no_qr_code_for_this_computer_only(self):
+        """phones can't open 'localhost', so offline the dashboard explains how to get a phone link"""
+        with mock.patch.dict(os.environ, {"APP_URL": "http://localhost:8501"}):
+            captions = " ".join(c.value for c in self.dashboard().caption)
+        self.assertIn("put the app online first", captions)
+
     def test_emergency_alert_on_the_dashboard(self):
         """(d) on screen: an emergency shows as a red alert at the top of the dashboard"""
         self.chat("There's smoke coming from an outlet in Buchanan 302")

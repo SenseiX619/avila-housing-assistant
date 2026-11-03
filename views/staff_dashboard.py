@@ -11,6 +11,7 @@ import pandas as pd
 import streamlit as st
 
 import config
+from phone_link import show_qr
 from tickets import STATUSES, TicketStore
 
 store = TicketStore()
@@ -25,6 +26,8 @@ st.markdown(f"""
 </div>""", unsafe_allow_html=True)
 
 with st.sidebar:
+    show_qr(width=210)                       # the audience scans this on the projector
+    st.divider()
     st.subheader("Demo tools")
     # Two clicks on purpose (open, then confirm), so a stray click on stage can't wipe the board.
     with st.popover("🔄 Reset demo", type="primary", width="stretch"):

@@ -8,6 +8,7 @@ import config
 import voice
 from agent import GREETING, MAIN_MENU, HousingAgent, write_log
 from knowledge import Retriever
+from phone_link import show_qr
 from tickets import TicketStore
 
 # Avila colours: purple and gold. (Styles and the banner go in separate calls -
@@ -54,6 +55,7 @@ with st.sidebar:
             st.session_state.pending = ex
     st.divider()
     st.error(f"**Emergency?** Call 911 or Campus Safety at **{config.CAMPUS_SAFETY_PHONE}**")
+    show_qr(width=150)
     if st.button("Start a new conversation"):
         st.session_state.clear()
         st.rerun()
