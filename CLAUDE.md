@@ -81,5 +81,9 @@ Ask me before anything big or hard to undo.
 
 ## Current status
 - Working: setup, handbook loading, Groq key, AI replies, chat screen, tickets, dashboard.
-- v1.2 fixed voice messages getting the greeting instead of becoming tickets. NOT yet
-  confirmed with a real voice test. Check data/conversation_log.jsonl after I test.
+- Nov 2 (v1.3-safety-tiers): flows a-e all passed a dry run with the real AI and real Whisper
+  (synthetic voice, temporary database). Emergency wording changed as described above.
+- Waiting on: my own test in the browser, especially the mic (flow b). Then read
+  data/conversation_log.jsonl to confirm what was heard and understood.
+- Known, for later tasks: free tier = 8,000 tokens/min, so replies slow to 5-14s after ~10 quick
+  messages (task 5). The real database's ticket counter is at AV-1008, not AV-1001 (task 6).

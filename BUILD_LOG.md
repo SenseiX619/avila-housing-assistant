@@ -228,3 +228,45 @@ assistant answered with the same greeting. No ticket was created.
 
 **Tested:** with a deliberately bad AI that labels everything small talk, the heater
 message still became ticket AV-1001; a silent recording shows the mic warning.
+
+---
+
+## v1.3-safety-tiers - First full test with the real AI: the right number to call
+
+**What:**
+- `tests/test_flows.py` + `test.bat`: 23 saved offline checks of the five demo flows, on the agent
+  AND on the real Streamlit pages. They use the fake AI and a temporary database, so they never
+  touch real tickets. Double-click `test.bat` after every change.
+- A dry run of all five flows with the real Groq AI. For the mic flow, Windows' built-in voice spoke
+  "Hey, my heater isn't working" into a WAV file, which went through the real Whisper. Everything
+  worked: Whisper heard every line exactly, Spanish came back in Spanish with an English ticket,
+  and normal replies took about half a second.
+
+**What broke:**
+1. "Can I smoke in my room?" got "This sounds like an emergency... call 911 now", and "my smoke
+   detector keeps beeping" became a red EMERGENCY ticket. The AI had read both correctly; the
+   danger-word net overruled it just because they contain "smoke".
+2. Every emergency said "call 911" first. The handbook (printed p. 23) says: "In Case of Emergency,
+   contact Campus Safety at 816.985.6079 or 911. For extreme emergencies, call 911."
+
+**Fix (Sensei's call: "911 only for a proper fire, Campus Safety for smoke and beeping, give both"):**
+
+| Situation | First thing the student reads |
+|---|---|
+| Real fire, someone hurt, gas, carbon monoxide | Call 911, then Campus Safety |
+| Fire alarm sounding | Leave the building, then call Campus Safety |
+| Smoke, sparks, flooding, beeping | Call Campus Safety (911 if flames or someone hurt) |
+
+- Both numbers are always shown. The danger-word net stays, and the AI alone still can't call off
+  a danger word. Only when the AI AND the wording agree it isn't happening right now (a rules
+  question, or a smoke detector beeping) does the student get a one-line safety reminder and a
+  normal reply. A beeping detector becomes an urgent repair (2-day deadline).
+- The nets also read the AI's English summary of the message, so a fire reported in Spanish
+  still gets 911 first.
+
+**Also found (for task 5):** Groq's free tier gives the main model 8,000 tokens per minute.
+Understanding one message costs about 800 tokens, a handbook answer about 1,900 in total. After
+about 10 quick messages, replies slowed from 0.5 seconds to 5-14 seconds.
+
+**Lesson:** a safety net that ignores context cries wolf, and people learn to ignore it. Before
+standing an alarm down, make two independent signals agree.

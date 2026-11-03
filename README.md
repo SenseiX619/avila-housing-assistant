@@ -130,6 +130,9 @@ Every step is a Git tag. Read `BUILD_LOG.md` alongside:
 | `v0.6-voice` | Talk to it, hear it answer |
 | `v0.7-polish` | Fixes after looking at it in a browser |
 | `v1.0-demo` | Windows setup scripts, self-check, README |
+| `v1.1-models` | Free gpt-oss models; checks which models the key can use |
+| `v1.2-voice-fixes` | Silent-mic warning, repair safety net, written-only replies |
+| `v1.3-safety-tiers` | Saved tests; Campus Safety first, 911 for real fires, no false alarms |
 
 ```
 git checkout v0.3-qa-chat          # see the app as it was at that step
