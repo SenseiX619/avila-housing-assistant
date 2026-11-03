@@ -7,6 +7,7 @@ we change this file and nothing else. The rest of the app just calls chat() / ch
 
 import json
 import re
+import time
 
 import config
 
@@ -19,8 +20,23 @@ def _groq():
         if not config.GROQ_API_KEY or "paste-your" in config.GROQ_API_KEY:
             raise RuntimeError("No Groq API key found. Add GROQ_API_KEY to your .env file.")
         from groq import Groq
-        _client = Groq(api_key=config.GROQ_API_KEY)
+        # max_retries=0: when a model has used up its free tokens for the minute, don't wait and retry
+        # it (that caused 5-14 second replies) - chat() moves straight on to the next model instead.
+        # timeout=15: a reply normally takes under 2 seconds, so don't hang a minute on a stuck call.
+        _client = Groq(api_key=config.GROQ_API_KEY, max_retries=0, timeout=15)
     return _client
+
+
+# Free tier: EACH model gets its own 8,000 tokens per minute. When one runs out, it "rests" until
+# Groq says it's ready again, and the other models take over - about 3x the capacity of one model.
+_resting_until: dict[str, float] = {}
+
+
+def _rest_seconds(err: Exception) -> float:
+    try:
+        return min(60.0, float(err.response.headers.get("retry-after", 10)))
+    except Exception:
+        return 10.0
 
 
 _available_models = None
@@ -48,7 +64,8 @@ def chat(messages: list[dict], json_mode: bool = False,
         return fake_llm.respond(messages, json_mode)
 
     last_error = None
-    for model in chat_models():
+    ready = [m for m in chat_models() if _resting_until.get(m, 0) <= time.time()] or chat_models()
+    for model in ready:
         try:
             kwargs = dict(model=model, messages=messages,
                           temperature=temperature, max_tokens=max_tokens)
@@ -66,6 +83,8 @@ def chat(messages: list[dict], json_mode: bool = False,
         except RuntimeError:
             raise                      # missing key: no point trying another model
         except Exception as err:       # rate limit / model busy / model retired -> try the next one
+            if getattr(err, "status_code", None) == 429:          # out of free tokens for this minute
+                _resting_until[model] = time.time() + _rest_seconds(err)
             last_error = err
     raise RuntimeError(f"The AI service is unavailable right now: {last_error}")
 

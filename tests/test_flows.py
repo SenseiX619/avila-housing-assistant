@@ -273,6 +273,29 @@ class AgentFlows(unittest.TestCase):
         self.assertIn("couldn't find", self.say("What's the status of AV-9999?").text)
 
     # ---------- task 4: when the AI misbehaves ----------
+    def test_out_of_tokens_switches_model_without_waiting(self):
+        """task 5: the main model is out of free tokens -> the backup answers at once, and the main
+        model rests (is skipped) until Groq says it's ready again"""
+        class OutOfTokens(Exception):
+            status_code = 429
+            response = mock.Mock(headers={"retry-after": "7"})
+
+        def create(model, **kwargs):
+            calls.append(model)
+            if model == "main":
+                raise OutOfTokens()
+            return mock.Mock(choices=[mock.Mock(message=mock.Mock(content="hi"))])
+
+        calls = []
+        client = mock.Mock()
+        client.chat.completions.create = create
+        with mock.patch.object(config, "FAKE_LLM", False), mock.patch.object(llm, "_groq", return_value=client), \
+             mock.patch.object(llm, "_available_models", ["main", "backup"]), \
+             mock.patch.object(llm, "_resting_until", {}):
+            self.assertEqual(llm.chat([{"role": "user", "content": "x"}]), "hi")
+            self.assertEqual(llm.chat([{"role": "user", "content": "y"}]), "hi")
+        self.assertEqual(calls, ["main", "backup", "backup"], "the 2nd message skips the resting model")
+
     def test_broken_json_is_retried_once(self):
         """the AI's first answer isn't JSON, the retry is -> the retry is used, the problem noted"""
         problems = []
