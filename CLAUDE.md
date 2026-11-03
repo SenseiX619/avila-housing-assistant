@@ -76,7 +76,7 @@ Ask me before anything big or hard to undo.
 4. DONE (v1.6-safe-json): gpt-oss reliability: make sure the ANALYZE call always returns valid JSON. If it doesn't,
    retry once, then fall back safely. Log failures.
 5. DONE (v1.7-fast-failover): speed. Cause was waiting on a rate-limited model; now instant switch to the backup. 0.7-1.1 s per reply in a 10-question burst.
-6. Demo polish: a "Reset demo" button on the dashboard (clear tickets + load sample tickets),
+6. DONE (v1.8-demo-ready): Demo polish: a "Reset demo" button on the dashboard (clear tickets + load sample tickets),
    and make sure the dashboard looks clean on a projector.
 7. Optional, only if 1-6 are solid: deploy free to Streamlit Community Cloud (key in Secrets,
    never in the repo) so teammates can open it on their phones.
@@ -96,5 +96,3 @@ Ask me before anything big or hard to undo.
   ("File change - Rerun" at the top). Click Rerun or reload first.
 - Waiting on: my retest with the mic and the buttons. Then read data/conversation_log.jsonl.
 - Known, for later tasks: (speed fixed in v1.7) free tier = 8,000 tokens/min PER MODEL; we switch models when one runs out.
-  Test ticket AV-1008 is in the real database; the counter isn't reset (task 6).
-  Streamlit shows a "Help agents write better apps" popup and a Deploy button (hide for the projector, task 6).

@@ -381,3 +381,25 @@ to 2 times, before our code ever tried the backup model. The backup models each 
 **Tested:** 40 offline checks, including a fake "out of tokens" model. Real burst test: 10
 handbook questions back-to-back. The main model ran out at question 6, and the switch took
 0.06 seconds. **Every reply took 0.7-1.1 seconds.** Before this fix the same situation took 5-14 s.
+
+---
+
+## v1.8-demo-ready - Reset button and projector polish
+
+**What:**
+- **🔄 Reset demo** in the dashboard's sidebar: deletes every ticket, numbers them from **AV-1001
+  again** and loads 6 clearly-fake sample tickets (2 already overdue, to show the flags). It takes
+  two clicks (open, confirm), so a stray click on stage can't wipe the board. Deleting tickets alone
+  never reset the numbering, because SQLite remembers the last number; `reset_demo()` clears that too.
+- **`.streamlit/config.toml`** (read when the app starts):
+  - `toolbarMode = "minimal"`: no Deploy button, Rerun menu or Streamlit's "Help agents" popup.
+  - `runOnSave = true`: open tabs load code changes by themselves. No more stale tabs showing
+    "File change - Rerun" (that's what made the mic retest test old code).
+  - Light theme with Avila purple buttons: projectors wash out dark themes.
+- **Ticket table** sized for a 1280-wide projector: Flag, Due by, Issue, Where, Status, Via, Language.
+  Building + room are one "Where" column. Category is still in the chart.
+- `AVILA_DB_FILE` (optional) points a practice copy of the app at its own database, so trying
+  the Reset button never touches the real demo tickets.
+
+**Tested:** 41 offline checks (reset -> AV-1001..AV-1006, next ticket AV-1007). Looked at the
+dashboard at 1280x720 in a practice copy with its own database: reset worked, all columns fit.

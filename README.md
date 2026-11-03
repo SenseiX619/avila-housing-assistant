@@ -77,7 +77,7 @@ save the PDF into `data/docs/`, and run `python ingest.py` again.
 ## Demo script (Nov 4)
 
 Open the **Student Assistant** on one screen and the **Staff Dashboard** on the other
-(click "Load sample tickets" first so the dashboard isn't empty).
+(in the dashboard's sidebar click **🔄 Reset demo** -> **Yes, reset the demo** first: 6 sample tickets, numbered from AV-1001).
 
 1. **Question:** "Can my friend stay over this weekend?" -> answer + handbook page.
 2. **Voice repair:** tap the mic, say *"The heater in my room isn't working,"* tap stop.
@@ -141,6 +141,7 @@ Every step is a Git tag. Read `BUILD_LOG.md` alongside:
 | `v1.5-printed-pages` | Citations use the page numbers printed in the handbook |
 | `v1.6-safe-json` | Retry broken AI answers, rule-based fallback, errors logged not shown |
 | `v1.7-fast-failover` | Instant switch to a backup model when one runs out of free tokens |
+| `v1.8-demo-ready` | Reset demo button, projector settings (light theme, no developer buttons), tidier table |
 
 ```
 git checkout v0.3-qa-chat          # see the app as it was at that step
