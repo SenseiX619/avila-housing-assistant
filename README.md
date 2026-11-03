@@ -138,6 +138,7 @@ Every step is a Git tag. Read `BUILD_LOG.md` alongside:
 | `v1.2-voice-fixes` | Silent-mic warning, repair safety net, written-only replies |
 | `v1.3-safety-tiers` | Saved tests; Campus Safety first, 911 for real fires, no false alarms |
 | `v1.4-click-first` | Buttons for every step, call buttons, shorter replies, mic fixes and logging |
+| `v1.5-printed-pages` | Citations use the page numbers printed in the handbook |
 
 ```
 git checkout v0.3-qa-chat          # see the app as it was at that step

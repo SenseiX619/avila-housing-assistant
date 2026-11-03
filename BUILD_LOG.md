@@ -306,3 +306,27 @@ silent", so the mic did record; the laptop mic was the default (48% volume, not 
 cause was the old check that averaged loudness over the whole clip, which is what v1.4 replaced.
 
 **Lesson:** log failures, not just successes. The worst bug is the one that leaves no trace.
+
+---
+
+## v1.5-printed-pages - Citations match the page numbers students see
+
+**What broke:** citations used the PDF's page count, but the handbook prints its own numbers,
+and they are one lower (the cover has no number). The guest policy was cited as "p. 15", but a
+student flipping through the handbook finds it on the page printed **14**.
+
+**Choice:** cite the number printed on the page, not "PDF page". A student holding the handbook
+(paper or PDF) looks for the number on the page, and staff can check us the same way.
+
+**Fix:**
+- `knowledge.py` reads the printed number from the first line of each page (every page has one)
+  and stores it as `page`, keeping the PDF's count as `pdf_page`. Pages without a printed number
+  keep the PDF count, so another document dropped into `data/docs/` still works.
+- The printed number is also removed from the chunk text, so it isn't searched as a word.
+- The "Sources" line under an answer now lists only the pages the answer cites, not every page
+  the search pulled up.
+
+**After pulling this change, run `python ingest.py` once** to rebuild `data/knowledge.json`.
+
+**Tested:** 33 offline checks (Lockouts = printed p. 14, PDF p. 15). With the real AI: lockout fee
+-> p. 14-15, guests -> p. 14, smoking -> p. 17; each checked against the printed handbook pages.

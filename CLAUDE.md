@@ -65,15 +65,14 @@ Work through these one at a time and stop after each one so I can check it.
 Ask me before anything big or hard to undo.
 
 1. DONE (Nov 2): summarized how the app works in 10 bullet points for the presentation.
-2. IN PROGRESS: test the real flows with me and fix anything broken:
+2. DONE except my own mic retest (see Current status): test the real flows with me and fix anything broken:
    a) "Can my friend stay over this weekend?" -> answer + page citation
    b) mic: "My heater isn't working" -> asks building + room -> ticket -> appears on the dashboard
    c) Spanish: "Mi baño tiene una fuga en Wylie 108" -> Spanish reply, English ticket
    d) "There's smoke coming from an outlet in Buchanan 302" -> Campus Safety first, 911 as the backup
    e) "What's the status of my ticket?" -> correct status
-3. Page numbers: citations currently use PDF page numbers, but the handbook's printed page
-   numbers are about 2 lower (the Lockouts section is printed as p.13, but it's PDF page 15).
-   Make citations match what a student sees, or say "PDF page", and explain the choice.
+3. DONE (v1.5-printed-pages): citations use the number printed on each page (exactly 1 lower than
+   the PDF page; Lockouts is printed p. 14, PDF p. 15). Chunks keep both: page and pdf_page.
 4. gpt-oss reliability: make sure the ANALYZE call always returns valid JSON. If it doesn't,
    retry once, then fall back safely. Log failures.
 5. Speed: if a reply takes more than ~4 seconds, find out why and fix it.
