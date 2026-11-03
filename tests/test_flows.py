@@ -406,7 +406,18 @@ class Screens(unittest.TestCase):
         self.assertIn("🎫 AV-", reply)
         board = self.dashboard()
         self.assertEqual(next(m.value for m in board.metric if m.label == "Open tickets"), "1")
-        self.assertIn("Thompson Hall", board.dataframe[0].value["Building"].tolist())
+        self.assertIn("Thompson Hall 214", board.dataframe[0].value["Where"].tolist())
+
+    def test_reset_demo_restarts_numbering_and_loads_samples(self):
+        """task 6: Reset demo -> only the 6 sample tickets, numbered AV-1001..AV-1006, next is AV-1007"""
+        store = TicketStore()
+        store.create("Wylie Hall", "108", "Old test ticket")
+        board = self.dashboard()
+        next(b for b in board.button if b.label == "Yes, reset the demo").click().run()
+        self.assertFalse(board.exception, board.exception)
+        self.assertEqual(sorted(t["code"] for t in store.all()), [f"AV-{1001 + i}" for i in range(6)])
+        self.assertEqual(store.create("Thompson Hall", "214", "New")["code"], "AV-1007")
+        self.assertTrue(any("next new ticket is AV-1007" in s.value for s in board.success))
 
     def test_emergency_alert_on_the_dashboard(self):
         """(d) on screen: an emergency shows as a red alert at the top of the dashboard"""

@@ -20,7 +20,9 @@ ROOT = Path(__file__).parent
 DATA_DIR = ROOT / "data"
 DOCS_DIR = DATA_DIR / "docs"            # source PDFs (the housing handbook)
 KNOWLEDGE_FILE = DATA_DIR / "knowledge.json"  # handbook split into searchable chunks
-DB_FILE = DATA_DIR / "tickets.db"       # SQLite database for maintenance tickets
+# SQLite database for maintenance tickets. AVILA_DB_FILE can point a practice copy of the app at a
+# separate database, so trying things out never touches the real demo tickets.
+DB_FILE = Path(os.getenv("AVILA_DB_FILE") or DATA_DIR / "tickets.db")
 
 # ---------- Source documents (public Avila pages only) ----------
 HANDBOOK_URL = "https://www.avila.edu/wp-content/uploads/2026/09/Housing-Handbook-2026-2027.pdf"

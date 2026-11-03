@@ -92,6 +92,14 @@ class TicketStore:
         with self._connect() as db:
             db.execute("DELETE FROM tickets")
 
+    def reset_demo(self) -> None:
+        """Start a demo fresh: delete every ticket, number from AV-1001 again, load the sample tickets.
+        (Deleting tickets alone doesn't reset the numbering - SQLite remembers the last ID.)"""
+        with self._connect() as db:
+            db.execute("DELETE FROM tickets")
+            db.execute("DELETE FROM sqlite_sequence WHERE name = 'tickets'")
+        self.load_sample_tickets()
+
 
 def with_deadline(ticket: dict) -> dict:
     """Add the handbook repair deadline: 2 days for emergencies/urgent, 2 weeks for regular repairs."""

@@ -26,13 +26,20 @@ st.markdown(f"""
 
 with st.sidebar:
     st.subheader("Demo tools")
-    if st.button("Load sample tickets", width="stretch"):
-        store.load_sample_tickets()
-        st.rerun()
-    confirm = st.checkbox("I want to delete ALL tickets")
-    if st.button("Clear all tickets", disabled=not confirm, width="stretch"):
-        store.clear()
-        st.rerun()
+    # Two clicks on purpose (open, then confirm), so a stray click on stage can't wipe the board.
+    with st.popover("🔄 Reset demo", type="primary", width="stretch"):
+        st.write("Deletes **all** tickets, numbers them from AV-1001 again, "
+                 "and loads 6 clearly-fake sample tickets.")
+        if st.button("Yes, reset the demo", type="primary", width="stretch"):
+            store.reset_demo()
+            st.session_state.reset_done = True
+            st.rerun()
+        if st.button("Delete all tickets (no samples)", width="stretch"):
+            store.reset_demo()
+            store.clear()
+            st.rerun()
+    if st.session_state.pop("reset_done", False):
+        st.success("Demo reset: 6 sample tickets. The next new ticket is AV-1007.")
 
 
 def badge(t: dict) -> str:
@@ -73,18 +80,19 @@ def live_board() -> None:
     table = pd.DataFrame([{
         "Ticket": t["code"],
         "Flag": badge(t),
-        "Issue": t["issue"],
-        "Building": t["building"],
-        "Room": t["room"],
-        "Priority": t["urgency"].title(),
         "Due by": datetime.fromisoformat(t["due_at"]).strftime("%b %d"),
+        "Issue": t["issue"],
+        "Where": f"{t['building']} {t['room']}",
         "Status": t["status"],
         "Via": t["channel"].title(),
-        "Category": t["category"],
         "Language": t["language"],
-        "Reported": datetime.fromisoformat(t["created_at"]).strftime("%b %d, %I:%M %p"),
     } for t in rows])
-    st.dataframe(table, hide_index=True, width="stretch")
+    # Most important columns first, sized to fit a 1280-wide projector. The flag already says
+    # Urgent/Emergency, and the category is in the chart below.
+    st.dataframe(table, hide_index=True, width="stretch", column_config={
+        "Ticket": st.column_config.TextColumn(width=75), "Flag": st.column_config.TextColumn(width=115),
+        "Due by": st.column_config.TextColumn(width=65), "Issue": st.column_config.TextColumn(width=240),
+        "Where": st.column_config.TextColumn(width=135)})
 
     if open_tickets:
         left, right = st.columns(2)

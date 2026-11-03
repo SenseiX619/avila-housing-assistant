@@ -1,0 +1,11 @@
+# Streamlit settings for the demo. Read when the app starts: restart run.bat after changing them.
+
+[client]
+toolbarMode = "minimal"      # hide Deploy, Rerun and other developer buttons/popups on the projector
+
+[server]
+runOnSave = true             # open tabs load code changes by themselves (no stale "File change - Rerun")
+
+[theme]
+base = "light"               # projectors wash out dark themes; also matches the purple/gold banners
+primaryColor = "#4B2A7B"     # Avila purple for buttons and highlights
