@@ -6,7 +6,7 @@ import streamlit as st
 
 import config
 import voice
-from agent import GREETING, HousingAgent, write_log
+from agent import GREETING, MAIN_MENU, HousingAgent, write_log
 from knowledge import Retriever
 from tickets import TicketStore
 
@@ -40,7 +40,7 @@ if not agent.retriever.ready:
 
 # Each browser tab gets its own memory (session_state survives between messages)
 if "chat" not in st.session_state:
-    st.session_state.chat = [{"role": "assistant", "content": GREETING}]
+    st.session_state.chat = [{"role": "assistant", "content": GREETING, "options": MAIN_MENU}]
     st.session_state.agent_state = {}
 
 with st.sidebar:
@@ -69,7 +69,8 @@ def ticket_card(t: dict) -> None:
 
 
 # Show the conversation so far
-for msg in st.session_state.chat:
+last = len(st.session_state.chat) - 1
+for i, msg in enumerate(st.session_state.chat):
     with st.chat_message(msg["role"], avatar="🦅" if msg["role"] == "assistant" else None):
         st.markdown(msg["content"])
         if msg.get("ticket"):
@@ -77,6 +78,15 @@ for msg in st.session_state.chat:
         if msg.get("sources"):
             st.markdown(f"<div class='sources'>Sources: {config.HANDBOOK_NAME}, page "
                         f"{', '.join(map(str, msg['sources']))}</div>", unsafe_allow_html=True)
+        if msg.get("calls"):                     # on a phone, these dial the number
+            with st.container(horizontal=True):
+                for label, link in msg["calls"]:
+                    st.link_button(label, link, type="primary")
+        if i == last and msg.get("options"):
+            # Quick replies under the latest answer: tapping one is the same as typing it
+            choice = st.pills("Quick replies", msg["options"], key=f"options_{i}", label_visibility="collapsed")
+            if choice:
+                st.session_state.pending = choice
 
 # A mic problem from the last attempt (shown once, above the recorder)
 if mic_problem := st.session_state.pop("mic_problem", None):
@@ -85,8 +95,7 @@ if mic_problem := st.session_state.pop("mic_problem", None):
 # ---------- Two doors into the same agent: voice and text ----------
 # The student talks; the assistant always answers in writing.
 st.session_state.setdefault("mic_round", 0)
-recording = st.audio_input("🎤 Tap to talk - say your question or what's broken, then tap stop",
-                           key=f"mic_{st.session_state.mic_round}")
+recording = st.audio_input("🎤 Tap the mic, talk, then tap stop", key=f"mic_{st.session_state.mic_round}")
 typed = st.chat_input("...or type your question here")
 
 user_text, channel = None, "text"
@@ -114,6 +123,6 @@ if user_text:
     st.session_state.chat.append({"role": "user", "content": ("🎤 " if channel == "voice" else "") + user_text})
     with st.spinner("Thinking..."):
         reply = agent.respond(user_text, st.session_state.agent_state, channel=channel)
-    st.session_state.chat.append({"role": "assistant", "content": reply.text,
-                                  "sources": reply.sources, "ticket": reply.ticket})
+    st.session_state.chat.append({"role": "assistant", "content": reply.text, "sources": reply.sources,
+                                  "ticket": reply.ticket, "options": reply.options, "calls": reply.calls})
     st.rerun()

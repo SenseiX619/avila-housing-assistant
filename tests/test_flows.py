@@ -100,14 +100,36 @@ class AgentFlows(unittest.TestCase):
         """(b) mic: 'My heater isn't working' -> asks hall + room -> ticket saved as Voice"""
         first = self.say("My heater isn't working", channel="voice")
         self.assertEqual(first.kind, "ask_details")
-        self.assertIn("hall", first.text.lower())
-        self.assertIn("room", first.text.lower())
+        self.assertIn("Tap your hall", first.text)
+        self.assertEqual(first.options, config.BUILDINGS)
 
         second = self.say("Thompson 214", channel="voice")
         self.assertEqual(second.kind, "ticket")
         self.assertEqual((second.ticket["building"], second.ticket["room"]), ("Thompson Hall", "214"))
         self.assertEqual(second.ticket["channel"], "voice")
         self.assertEqual([t["code"] for t in self.store.all()], [second.ticket["code"]])
+
+    def test_b_tap_through_a_repair_without_any_ai_call(self):
+        """(b) tap 'Report a repair' -> 'Heat / AC' -> 'Thompson Hall' -> type 214: ticket, zero AI calls"""
+        no_ai = mock.Mock(side_effect=AssertionError("a tapped button must not call the AI"))
+        with mock.patch("llm.chat_json", no_ai), mock.patch("llm.chat", no_ai):
+            self.assertIn("🔥 Heat / AC", self.say(agent.REPAIR).options)
+            self.assertEqual(self.say("🔥 Heat / AC").options, config.BUILDINGS)
+            self.assertIn("room number", self.say("Thompson Hall").text)
+            done = self.say("214")
+        self.assertEqual(done.kind, "ticket")
+        t = done.ticket
+        self.assertEqual((t["category"], t["urgency"], t["building"], t["room"]),
+                         ("Heating/AC", "urgent", "Thompson Hall", "214"))
+        self.assertIn(agent.MY_TICKET, done.options)
+
+    def test_main_menu_buttons(self):
+        """the main buttons: question -> example questions, my ticket -> asks the number, emergency -> call buttons"""
+        self.assertEqual(self.say(agent.QUESTION).options, agent.EXAMPLE_QUESTIONS)
+        self.assertIn("ticket number", self.say(agent.MY_TICKET).text)
+        emergency = self.say(agent.EMERGENCY)
+        self.assertEqual(emergency.calls, [agent.CALL_911, agent.CALL_SAFETY])
+        self.assertEqual(agent.CALL_SAFETY[1], "tel:+18169856079")
 
     def test_b_repair_net_catches_ai_calling_it_smalltalk(self):
         """(b) safety net: the AI says 'smalltalk' for a repair -> still becomes a repair"""
@@ -136,6 +158,7 @@ class AgentFlows(unittest.TestCase):
         self.assertEqual((reply.ticket["building"], reply.ticket["room"]), ("Buchanan Hall", "302"))
         self.assertLess(reply.text.index(config.CAMPUS_SAFETY_PHONE), reply.text.index("911"))
         self.assertLess(reply.text.index("911"), reply.text.index(reply.ticket["code"]))
+        self.assertEqual(reply.calls, [agent.CALL_SAFETY, agent.CALL_911])
 
     def test_d_real_fire_calls_911_first(self):
         """(d) a real fire -> 911 first, then Campus Safety, then the emergency ticket"""
@@ -143,6 +166,7 @@ class AgentFlows(unittest.TestCase):
         self.assertEqual(reply.kind, "emergency")
         self.assertLess(reply.text.index("911"), reply.text.index(config.CAMPUS_SAFETY_PHONE))
         self.assertLess(reply.text.index(config.CAMPUS_SAFETY_PHONE), reply.text.index(reply.ticket["code"]))
+        self.assertEqual(reply.calls, [agent.CALL_911, agent.CALL_SAFETY])
 
     def test_d_fire_alarm_says_leave_the_building_first(self):
         """(d) fire alarm going off -> leave the building first, then Campus Safety, 911 as the backup"""
@@ -305,6 +329,17 @@ class Screens(unittest.TestCase):
         self.chat("There's smoke coming from an outlet in Buchanan 302")
         alerts = [e.value for e in self.dashboard().error]
         self.assertTrue(any("EMERGENCY" in a and "Buchanan Hall" in a for a in alerts), alerts)
+
+    def test_tap_through_a_repair_on_screen(self):
+        """(b) on screen: tap the buttons, type the room, and the ticket card appears"""
+        at = self.chat()
+        for tap in [agent.REPAIR, "💧 Leak / plumbing", "Wylie Hall"]:
+            at.pills[0].set_value(tap).run()
+            self.assertFalse(at.exception, at.exception)
+        self.assertIn("room number in Wylie Hall", self.last_reply(at))
+        at.chat_input[0].set_value("108").run()
+        self.assertIn("🎫 AV-", self.last_reply(at))
+        self.assertEqual(len(at.pills), 1, "buttons only under the latest answer")
 
     def record(self, audio: bytes):
         at = self.chat()

@@ -13,6 +13,9 @@ Every student message goes through 2 steps:
                   ticket_status  -> look the ticket up
                   smalltalk      -> short friendly reply
 
+Shortcut: a tapped quick-reply button (or a bare room number when we asked for one) skips the AI
+and goes straight to ACT - instant, and it saves the free tier's tokens.
+
 WHY split it like this: the AI is great at understanding messy human language,
 but Python is better at rules (search, look things up, save data). Letting the AI
 understand and Python decide makes the agent predictable - important when a
@@ -35,6 +38,8 @@ class AgentReply:
     kind: str = "answer"            # answer | smalltalk | ask_details | ticket | emergency | status | error
     sources: list = field(default_factory=list)
     ticket: dict | None = None
+    options: list = field(default_factory=list)     # quick-reply buttons shown under the reply
+    calls: list = field(default_factory=list)       # (label, phone link) buttons, e.g. Call Campus Safety
 
 
 ANALYZE_PROMPT = f"""TASK: ANALYZE
@@ -84,7 +89,7 @@ Answer the student's question using ONLY the HANDBOOK EXCERPTS provided.
 
 Rules:
 - Reply in {{language}}.
-- Be short and clear: 2-5 sentences. Your answer may be read aloud, so no tables or long lists.
+- Be brief: 1-3 short sentences, the key fact first. No tables or long lists.
 - Cite the page like (Handbook p. 13) after the fact you used.
 - If the excerpts don't answer the question, say you're not sure and suggest emailing
   {config.HOUSING_EMAIL}. Never invent policies, fees, or phone numbers.
@@ -96,8 +101,7 @@ Translate the user's text into {language}. Keep it warm and natural.
 Keep ticket IDs (like AV-1001), phone numbers, emails and building names exactly as they are.
 Return only the translation."""
 
-GREETING = ("Hi! I'm the Avila Housing Assistant. I can answer questions about living on campus, "
-            "report a repair for you (just tell me what's broken), or check on a ticket you already reported.")
+GREETING = "Hi! I'm the Avila Housing Assistant. Tap a button, type, or use the 🎤 - I'll answer in writing."
 
 # Safety net: if the AI ever misses an emergency, these words still trigger the safety message.
 EMERGENCY_PATTERN = re.compile(
@@ -135,7 +139,27 @@ REPAIR_PATTERN = re.compile(
     r"(heater|heating|ac|a/c|air conditioning|sink|toilet|shower|light|outlet|fridge|door|lock|window)\b.{0,25}"
     r"\b(broken|out|dead|stuck|loud|dripping|not))", re.I)
 
-SHORT_HELLO = "Hey! What can I help you with - a housing question, or something in your room that needs fixing?"
+SHORT_HELLO = "Hey! What can I help with?"
+
+# ---------- Quick replies: buttons under each answer, so students can tap instead of typing ----------
+REPAIR, QUESTION, MY_TICKET, EMERGENCY = "🔧 Report a repair", "❓ Ask a question", "🎫 Check my ticket", "🚨 Emergency"
+MAIN_MENU = [REPAIR, QUESTION, MY_TICKET, EMERGENCY]
+# Button -> (category, issue saved on the ticket, urgency). Urgency follows the ANALYZE_PROMPT rules.
+ISSUE_BUTTONS = {
+    "🔥 Heat / AC": ("Heating/AC", "Heating or AC not working", "urgent"),
+    "💧 Leak / plumbing": ("Plumbing", "Leak or plumbing problem", "urgent"),
+    "🚪 Door / lock": ("Door/Lock", "Door or lock problem", "urgent"),
+    "⚡ Electrical": ("Electrical", "Electrical problem", "normal"),
+    "🧊 Appliance": ("Appliance", "Appliance not working", "normal"),
+    "🐜 Pests": ("Pest", "Pests", "normal"),
+    "📶 Wi-Fi": ("Internet", "Wi-Fi or internet not working", "normal"),
+}
+SOMETHING_ELSE = "✏️ Something else"
+EXAMPLE_QUESTIONS = ["Can my friend stay over?", "I'm locked out. Is there a fee?", "When are quiet hours?",
+                     "Can I have a pet?"]
+ROOM_ONLY = re.compile(r"^\W*(?:room|rm)?\W*([a-z]?\d{1,4}[a-z]?)\W*$", re.I)      # "214", "Room 214.", "B12"
+CALL_SAFETY = ("📞 Call Campus Safety", "tel:+1" + re.sub(r"\D", "", config.CAMPUS_SAFETY_PHONE))
+CALL_911 = ("📞 Call 911", "tel:911")
 
 LOG_FILE = config.DATA_DIR / "conversation_log.jsonl"
 
@@ -183,50 +207,12 @@ class HousingAgent:
         state.setdefault("my_tickets", [])
         analysis = {}
         try:
-            analysis = self._analyze(message, state)
-            language = analysis.get("language") or "English"
-            intent = str(analysis.get("intent") or "question").strip().lower()
-            details = analysis.get("ticket") or {}
-
-            # Safety net #2: the AI sometimes files a repair under "smalltalk" or "question".
-            # If the message clearly describes something broken, treat it as a repair anyway.
-            if intent in ("smalltalk", "question") and REPAIR_PATTERN.search(message):
-                intent = "maintenance"
-                if not details.get("issue"):
-                    details = dict(details, issue=message.strip()[:120])
-            # Long messages are never just "hi" - answer them from the handbook instead.
-            if intent == "smalltalk" and len(message.split()) > 6:
-                intent = "question"
-
-            # Safety net #1: danger words (in the message, or in the AI's English summary of it).
-            # The AI alone can't talk them down. Only when the AI AND the wording both say nothing is
-            # happening right now ("Can I smoke in my room?", "my smoke detector keeps beeping") do we
-            # reply normally - after a one-line safety reminder with both numbers.
-            words = f"{message} {details.get('issue') or ''}"
-            danger = bool(EMERGENCY_PATTERN.search(words))
-            reminder = danger and intent != "emergency" and bool(NOT_AN_EMERGENCY.search(words))
-            if reminder:
-                danger = False
-                if details.get("urgency") in (None, "", "null", "normal"):
-                    details = dict(details, urgency="urgent")      # e.g. a beeping smoke detector: 2-day fix
-
-            if analysis.get("cancel") and state.get("draft"):
-                state["draft"] = None
-                reply = AgentReply(self._say("No problem, I've cancelled that request.", language), kind="smalltalk")
-            elif intent == "emergency" or danger:
-                reply = self._handle_emergency(message, details, language, state, channel)
-            elif intent == "ticket_status":
-                reply = self._handle_status(analysis.get("ticket_id") or message, language, state)
-            elif intent == "maintenance" or (state.get("draft") and any(details.get(k) for k in ("building", "room"))):
-                reply = self._handle_maintenance(message, details, language, state, channel)
-            elif intent == "smalltalk":
-                # Only the very first hello gets the full introduction.
-                text = GREETING if len(state["history"]) < 2 else SHORT_HELLO
-                reply = AgentReply(self._say(text, language), kind="smalltalk")
+            reply = self._quick_reply(message, state, channel)
+            if reply:
+                analysis = {"quick_reply": True}                     # a tapped button: no AI call needed
             else:
-                reply = self._answer_question(message, analysis.get("search_query") or message, language, state)
-            if reminder:
-                reply.text = f"{self._say(SAFETY_REMINDER, language)}\n\n{reply.text}"
+                analysis = self._analyze(message, state)
+                reply = self._act(message, analysis, state, channel)
         except Exception as err:
             reply = AgentReply(
                 f"Sorry, I'm having trouble right now ({err}). For housing help, email "
@@ -238,6 +224,39 @@ class HousingAgent:
         state["history"] = state["history"][-12:]      # keep the last 6 exchanges
         log_turn(message, channel, analysis, reply)
         return reply
+
+    # ---------- shortcut: tapped buttons ----------
+    def _quick_reply(self, message: str, state: dict, channel: str) -> AgentReply | None:
+        """A tapped button (or a bare room number we asked for) needs no AI, so it's handled here,
+        instantly. Anything else returns None and goes through ANALYZE + ACT."""
+        language = state.get("language", "English")
+        draft = state.get("draft") or {}
+        if message == REPAIR:
+            return AgentReply(self._say("What's the problem? Tap one, or tell me in your own words.", language),
+                              kind="ask_details", options=[*ISSUE_BUTTONS, SOMETHING_ELSE])
+        if message in ISSUE_BUTTONS:
+            category, issue, urgency = ISSUE_BUTTONS[message]
+            return self._handle_maintenance(issue, {"issue": issue, "category": category, "urgency": urgency},
+                                            language, state, channel)
+        if message == SOMETHING_ELSE:
+            return AgentReply(self._say("Tell me what's broken - type it or tap the mic.", language),
+                              kind="ask_details")
+        if message == QUESTION:
+            return AgentReply(self._say("Ask me anything about living on campus, or tap one:", language),
+                              kind="ask_details", options=EXAMPLE_QUESTIONS)
+        if message == MY_TICKET:
+            return self._handle_status("", language, state)
+        if message == EMERGENCY:
+            text = (f"If there's a fire or someone is hurt, call 911 now. For smoke, sparks, flooding or anything "
+                    f"unsafe, call Campus Safety at {config.CAMPUS_SAFETY_PHONE}. Then tell me what's happening "
+                    f"and where, and I'll alert housing staff.")
+            return AgentReply(self._say(text, language), kind="emergency", calls=[CALL_911, CALL_SAFETY])
+        if draft.get("issue") and not draft.get("building") and message in config.BUILDINGS:
+            return self._handle_maintenance(message, {"building": message}, language, state, channel)
+        room = ROOM_ONLY.match(message)
+        if room and draft.get("issue") and draft.get("building") and not draft.get("room"):
+            return self._handle_maintenance(message, {"room": room.group(1).upper()}, language, state, channel)
+        return None
 
     # ---------- step 1: understand ----------
     def _analyze(self, message: str, state: dict) -> dict:
@@ -251,6 +270,55 @@ class HousingAgent:
         ])
 
     # ---------- step 2: act ----------
+    def _act(self, message: str, analysis: dict, state: dict, channel: str) -> AgentReply:
+        """Plain Python decides what to do with what the AI understood."""
+        language = analysis.get("language") or "English"
+        state["language"] = language                             # tapped buttons answer in it too
+        intent = str(analysis.get("intent") or "question").strip().lower()
+        details = analysis.get("ticket") or {}
+
+        # Safety net #2: the AI sometimes files a repair under "smalltalk" or "question".
+        # If the message clearly describes something broken, treat it as a repair anyway.
+        if intent in ("smalltalk", "question") and REPAIR_PATTERN.search(message):
+            intent = "maintenance"
+            if not details.get("issue"):
+                details = dict(details, issue=message.strip()[:120])
+        # Long messages are never just "hi" - answer them from the handbook instead.
+        if intent == "smalltalk" and len(message.split()) > 6:
+            intent = "question"
+
+        # Safety net #1: danger words (in the message, or in the AI's English summary of it).
+        # The AI alone can't talk them down. Only when the AI AND the wording both say nothing is
+        # happening right now ("Can I smoke in my room?", "my smoke detector keeps beeping") do we
+        # reply normally - after a one-line safety reminder with both numbers.
+        words = f"{message} {details.get('issue') or ''}"
+        danger = bool(EMERGENCY_PATTERN.search(words))
+        reminder = danger and intent != "emergency" and bool(NOT_AN_EMERGENCY.search(words))
+        if reminder:
+            danger = False
+            if details.get("urgency") in (None, "", "null", "normal"):
+                details = dict(details, urgency="urgent")          # e.g. a beeping smoke detector: 2-day fix
+
+        if analysis.get("cancel") and state.get("draft"):
+            state["draft"] = None
+            reply = AgentReply(self._say("No problem, I've cancelled that request.", language), kind="smalltalk",
+                               options=MAIN_MENU)
+        elif intent == "emergency" or danger:
+            reply = self._handle_emergency(message, details, language, state, channel)
+        elif intent == "ticket_status":
+            reply = self._handle_status(analysis.get("ticket_id") or message, language, state)
+        elif intent == "maintenance" or (state.get("draft") and any(details.get(k) for k in ("building", "room"))):
+            reply = self._handle_maintenance(message, details, language, state, channel)
+        elif intent == "smalltalk":
+            # Only the very first hello gets the full introduction.
+            text = GREETING if len(state["history"]) < 2 else SHORT_HELLO
+            reply = AgentReply(self._say(text, language), kind="smalltalk", options=MAIN_MENU)
+        else:
+            reply = self._answer_question(message, analysis.get("search_query") or message, language, state)
+        if reminder:
+            reply.text = f"{self._say(SAFETY_REMINDER, language)}\n\n{reply.text}"
+        return reply
+
     def _merge_draft(self, details: dict, state: dict, message: str) -> dict:
         draft = state.get("draft") or {"student_message": message}
         for key in ("building", "room", "issue", "category", "urgency"):
@@ -276,28 +344,27 @@ class HousingAgent:
         missing = [k for k in ("issue", "building", "room") if not draft.get(k)]
 
         if missing:
+            options = []
             if "issue" in missing:
-                ask = "Sorry to hear that. What exactly is broken or not working?"
-            elif "building" in missing and "room" in missing:
-                ask = (f"Got it: {draft['issue'].lower()}. Which residence hall and room number are you in? "
-                       f"(Buchanan, Wylie, Thompson, or Villa Ventura)")
+                ask = "Sorry to hear that. What's the problem? Tap one, or tell me in your own words."
+                options = [*ISSUE_BUTTONS, SOMETHING_ELSE]
             elif "building" in missing:
-                ask = "Which residence hall is that in? (Buchanan, Wylie, Thompson, or Villa Ventura)"
+                issue = draft["issue"][:1].lower() + draft["issue"][1:]
+                ask = f"Got it: {issue}. Where? Tap your hall" + (
+                    ', or say it like "Thompson 214".' if "room" in missing else ".")
+                options = config.BUILDINGS
             else:
-                ask = f"And what's your room number in {draft['building']}?"
-            return AgentReply(self._say(ask, language), kind="ask_details")
+                ask = f"And your room number in {draft['building']}?"
+            return AgentReply(self._say(ask, language), kind="ask_details", options=options)
 
         ticket = self._create_ticket(draft, language, channel, state)
-        days = config.SLA_DAYS.get(ticket["urgency"], 14)
-        window = "2 days" if days <= 2 else "2 weeks"
-        text = (f"Done! I created ticket {ticket['code']}: {ticket['issue']} in {ticket['building']}, "
-                f"room {ticket['room']} ({ticket['urgency']} priority). Housing staff can see it now. "
-                f"The Housing Handbook says this kind of repair should be finished within {window}. "
-                f"If it isn't, ask me about {ticket['code']} or email {config.HOUSING_EMAIL}.")
+        window = "2 days" if config.SLA_DAYS.get(ticket["urgency"], 14) <= 2 else "2 weeks"
+        text = (f"Done! Ticket {ticket['code']} is in, and housing staff can see it now. "
+                f"The Housing Handbook says it should be fixed within {window}.")
         if ticket["urgency"] == "urgent":
-            text += (f" If it gets worse tonight or this weekend, contact the RA on duty or Campus Safety "
-                     f"at {config.CAMPUS_SAFETY_PHONE}.")
-        return AgentReply(self._say(text, language), kind="ticket", ticket=ticket)
+            text += f" If it gets worse after hours, call Campus Safety at {config.CAMPUS_SAFETY_PHONE}."
+        return AgentReply(self._say(text, language), kind="ticket", ticket=ticket,
+                          options=[MY_TICKET, REPAIR, QUESTION])
 
     def _handle_emergency(self, message, details, language, state, channel) -> AgentReply:
         details = dict(details, urgency="emergency")
@@ -307,9 +374,11 @@ class HousingAgent:
         draft["urgency"] = "emergency"
 
         words = f"{message} {details['issue']}"
+        calls = [CALL_SAFETY, CALL_911]
         if CALL_911_PATTERN.search(words):                                 # real fire, someone hurt, gas
             text = (f"This sounds like an emergency. Get to safety and call 911 now, "
                     f"then call Campus Safety at {config.CAMPUS_SAFETY_PHONE}.")
+            calls = [CALL_911, CALL_SAFETY]
         elif ALARM_PATTERN.search(words):                                  # fire alarm sounding: leave first
             text = (f"When the fire alarm sounds, everyone must leave the building. Go now, then call Campus "
                     f"Safety at {config.CAMPUS_SAFETY_PHONE}. If you see flames or anyone is hurt, call 911.")
@@ -322,7 +391,8 @@ class HousingAgent:
             text += f" I've also logged ticket {ticket['code']} as an EMERGENCY so housing staff see it right away."
         else:
             text += " Once you're safe, tell me your building and room number and I'll alert housing staff."
-        return AgentReply(self._say(text, language), kind="emergency", ticket=ticket)
+        return AgentReply(self._say(text, language), kind="emergency", ticket=ticket, calls=calls,
+                          options=[] if draft.get("building") else config.BUILDINGS)
 
     def _handle_status(self, ticket_ref: str, language: str, state: dict) -> AgentReply:
         match = re.search(r"AV-?\s?(\d{4})", ticket_ref or "", re.I)
@@ -334,19 +404,18 @@ class HousingAgent:
         if not ticket:
             return AgentReply(self._say(f"I couldn't find ticket {code}. Can you double-check the number?",
                                         language), kind="status")
-        text = (f"Ticket {code} ({ticket['issue']} in {ticket['building']}, room {ticket['room']}) "
-                f"is currently: {ticket['status']}.")
+        text = f"Ticket {code} ({ticket['issue']}, {ticket['building']} {ticket['room']}) is {ticket['status']}."
         if ticket["overdue"]:
-            text += (" It's past the Housing Handbook's repair deadline, so it's flagged as overdue on the staff "
-                     f"dashboard. You can also email {config.HOUSING_EMAIL} or talk to your RA.")
-        return AgentReply(self._say(text, language), kind="status", ticket=ticket)
+            text += (" It's past the Housing Handbook's repair deadline, so it's flagged overdue for staff. "
+                     f"You can also email {config.HOUSING_EMAIL} or talk to your RA.")
+        return AgentReply(self._say(text, language), kind="status", ticket=ticket, options=[REPAIR, QUESTION])
 
     def _answer_question(self, message: str, query: str, language: str, state: dict) -> AgentReply:
         hits = self.retriever.search(query, k=4)
         if not hits:
             text = (f"I couldn't find that in the Housing Handbook. Please email {config.HOUSING_EMAIL} "
                     "and the Residential Life team will help you.")
-            return AgentReply(self._say(text, language))
+            return AgentReply(self._say(text, language), options=[QUESTION, REPAIR, MY_TICKET])
 
         excerpts = "\n\n".join(f"[{h['source']}] (page {h['page']})\n{h['text']}" for h in hits)
         messages = [{"role": "system", "content": ANSWER_PROMPT.format(language=language)}]
@@ -355,7 +424,7 @@ class HousingAgent:
                          "content": f"STUDENT QUESTION: {message}\n\nHANDBOOK EXCERPTS:\n{excerpts}"})
         text = llm.chat(messages, temperature=0.2)
         sources = sorted({h["page"] for h in hits})
-        return AgentReply(text, kind="answer", sources=sources)
+        return AgentReply(text, kind="answer", sources=sources, options=[QUESTION, REPAIR, MY_TICKET])
 
     # ---------- helpers ----------
     def _say(self, english_text: str, language: str) -> str:
