@@ -100,10 +100,17 @@ bar and make sure the laptop's own microphone is selected, not a headset or game
 
 ## Deploy it online for free (Streamlit Community Cloud)
 
-1. Run `python ingest.py` locally, then commit `data/knowledge.json` and push to GitHub.
-2. Go to **share.streamlit.io**, sign in with GitHub, choose this repo and `app.py`.
-3. In the app's **Settings -> Secrets**, add: `GROQ_API_KEY = "your-key"`
-4. Deploy. Free apps sleep after 12 hours without visitors, so open it before the demo.
+The repo already includes the handbook index (`data/knowledge.json`) and pinned library versions.
+
+1. Push this repo to GitHub (a **private** repo is fine). `.env` is never uploaded.
+2. Go to **share.streamlit.io**, sign in with GitHub, click **Create app**, pick the repo,
+   branch `main`, main file `app.py`. Under **Advanced settings** choose **Python 3.12**.
+3. In **Advanced settings -> Secrets**, paste: `GROQ_API_KEY = "your-key"` (never in the repo).
+4. Deploy. In the app's **Share** settings, make it private and invite teammates by email,
+   so strangers can't use up the free AI quota.
+5. Free apps sleep after 12 hours without visitors, so open the link before the demo.
+
+The cloud link is https, so the mic works on phones too (allow the microphone when asked).
 
 Note: tickets on the free cloud are stored in a file that resets when the app restarts.
 That's fine for a demo; a real Avila rollout would use a hosted database.
