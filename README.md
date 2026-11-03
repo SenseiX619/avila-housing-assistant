@@ -30,7 +30,6 @@ flowchart LR
     D -->|emergency| E[Safety message first:<br/>Campus Safety, or 911 for fire] --> DB
     D -->|ticket status| DB
     DB --> Dash[Staff Dashboard<br/>live, overdue flags]
-    Ans --> V[edge-tts<br/>spoken reply]
 ```
 
 **The key idea:** the AI *understands* (messy language, any language), and plain Python
@@ -44,9 +43,10 @@ flowchart LR
 | `agent.py` | The brain: analyze, then act (5 intents) |
 | `knowledge.py` / `ingest.py` | Handbook PDF -> chunks -> keyword search |
 | `tickets.py` | SQLite database of tickets + handbook deadlines |
-| `voice.py` | Speech in (Groq Whisper) and speech out (edge-tts) |
+| `voice.py` | Speech in (Groq Whisper) + silent-mic detection. Replies are always written. |
 | `llm.py` | The only file that talks to the AI (Groq, with a backup model) |
 | `config.py` | Every setting: buildings, phone numbers, models, deadlines |
+| `tests/test_flows.py` | Offline checks of the demo flows (double-click `test.bat`) |
 | `BUILD_LOG.md` | How we built it, step by step: what, why, what broke |
 
 ---
@@ -81,7 +81,7 @@ Open the **Student Assistant** on one screen and the **Staff Dashboard** on the 
 1. **Question:** "Can my friend stay over this weekend?" -> answer + handbook page.
 2. **Voice repair:** tap the mic, say *"The heater in my room isn't working."*
    The agent asks for your building and room, you answer, it creates a ticket
-   and reads the number out loud. **Switch screens: the ticket is already on the dashboard.**
+   and shows the ticket number. **Switch screens: the ticket is already on the dashboard.**
 3. **Another language:** type *"Mi baño tiene una fuga en Wylie 108"*. The answer comes
    back in Spanish; the ticket is saved in English for staff.
 4. **Safety:** "There's smoke coming from an outlet in Buchanan 302" -> call Campus Safety first
