@@ -36,6 +36,7 @@ TMP = Path(tempfile.mkdtemp(prefix="avila-tests-"))
 config.DB_FILE = TMP / "tickets.db"              # set BEFORE tickets.py is imported
 
 import agent                                     # noqa: E402
+import llm                                       # noqa: E402
 import voice                                     # noqa: E402
 from knowledge import Retriever                  # noqa: E402
 from streamlit.testing.v1 import AppTest         # noqa: E402
@@ -270,6 +271,53 @@ class AgentFlows(unittest.TestCase):
     def test_e_unknown_ticket_number(self):
         """(e) a ticket number that doesn't exist -> says so instead of guessing"""
         self.assertIn("couldn't find", self.say("What's the status of AV-9999?").text)
+
+    # ---------- task 4: when the AI misbehaves ----------
+    def test_broken_json_is_retried_once(self):
+        """the AI's first answer isn't JSON, the retry is -> the retry is used, the problem noted"""
+        problems = []
+        with mock.patch("llm.chat", side_effect=["Sure! Here you go:", '{"intent": "question"}']):
+            self.assertEqual(llm.chat_json([], problems), {"intent": "question"})
+        self.assertEqual(len(problems), 1)
+
+    def test_broken_json_twice_raises(self):
+        with mock.patch("llm.chat", return_value="I can't do JSON today"), self.assertRaises(llm.BadJSON):
+            llm.chat_json([])
+
+    def last_log_rows(self, n=3):
+        return agent.LOG_FILE.read_text(encoding="utf-8").splitlines()[-n:]
+
+    def test_ai_down_emergency_still_handled(self):
+        """the AI is unreachable -> rule-based fallback: smoke still gets the safety message and a ticket"""
+        with mock.patch("llm.chat", side_effect=RuntimeError("The AI service is unavailable right now")):
+            reply = self.say("There's smoke coming from an outlet in Buchanan 302")
+        self.assertEqual(reply.kind, "emergency")
+        self.assertEqual((reply.ticket["building"], reply.ticket["room"]), ("Buchanan Hall", "302"))
+        self.assertTrue(any('"used_fallback": true' in row for row in self.last_log_rows()))
+
+    def test_ai_sends_garbage_repair_still_works(self):
+        """the AI sends non-JSON twice on every message -> a repair still becomes a ticket"""
+        with mock.patch("llm.chat", return_value="hmm"):
+            self.assertEqual(self.say("My heater isn't working").kind, "ask_details")
+            reply = self.say("Thompson 214")
+        self.assertEqual(reply.kind, "ticket")
+        self.assertEqual((reply.ticket["building"], reply.ticket["room"]), ("Thompson Hall", "214"))
+
+    def test_sloppy_json_shape_does_not_crash(self):
+        """valid JSON with the wrong shape ('ticket': 'none', odd intent) -> handled, no error"""
+        sloppy = {"intent": ["?"], "ticket": "none", "language": None, "cancel": "yes"}
+        with mock.patch("llm.chat_json", return_value=sloppy):
+            reply = self.say("Can my friend stay over this weekend?")
+        self.assertEqual(reply.kind, "answer")
+
+    def test_errors_are_logged_not_shown(self):
+        """an unexpected error -> a friendly message with buttons; the technical detail goes to the log"""
+        with mock.patch.object(self.agent.retriever, "search", side_effect=ValueError("index exploded")):
+            reply = self.say("Can my friend stay over this weekend?")
+        self.assertEqual(reply.kind, "error")
+        self.assertNotIn("index exploded", reply.text)
+        self.assertEqual(reply.options, agent.MAIN_MENU)
+        self.assertTrue(any("index exploded" in row for row in self.last_log_rows()))
 
     def test_every_turn_is_logged(self):
         """every turn goes into the conversation log (here: the temporary test log)"""

@@ -183,6 +183,27 @@ def log_turn(message: str, channel: str, analysis: dict, reply: "AgentReply") ->
                "reply": reply.text[:300], "ticket": reply.ticket["code"] if reply.ticket else None})
 
 
+INTENTS = {"question", "maintenance", "emergency", "ticket_status", "smalltalk"}
+TICKET_FIELDS = ("building", "room", "issue", "category", "urgency")
+
+
+def _tidy(analysis: dict) -> dict:
+    """Valid JSON can still have the wrong shape ("ticket": "none", "intent": "Emergency!").
+    Coerce it into the shape ACT expects, so a sloppy answer can't crash the agent."""
+    def clean(value):
+        text = str(value).strip() if value is not None else ""
+        return None if text.lower() in ("", "null", "none", "unknown", "n/a") else text
+
+    ticket = analysis.get("ticket") if isinstance(analysis.get("ticket"), dict) else {}
+    intent = (clean(analysis.get("intent")) or "question").lower().strip("!. ")
+    return {"language": clean(analysis.get("language")) or "English",
+            "intent": intent if intent in INTENTS else "question",
+            "search_query": clean(analysis.get("search_query")),
+            "ticket": {k: clean(ticket.get(k)) for k in TICKET_FIELDS},
+            "ticket_id": clean(analysis.get("ticket_id")),
+            "cancel": analysis.get("cancel") is True}
+
+
 def normalize_building(value: str | None) -> str | None:
     if not value:
         return None
@@ -214,10 +235,12 @@ class HousingAgent:
                 analysis = self._analyze(message, state)
                 reply = self._act(message, analysis, state, channel)
         except Exception as err:
+            # The technical details go to the log for us, not on the student's screen.
+            write_log({"event": "error", "message": message, "error": f"{type(err).__name__}: {err}"[:500]})
             reply = AgentReply(
-                f"Sorry, I'm having trouble right now ({err}). For housing help, email "
-                f"{config.HOUSING_EMAIL}. For anything urgent, call Campus Safety at {config.CAMPUS_SAFETY_PHONE}.",
-                kind="error")
+                f"Sorry, I'm having trouble right now. For housing help, email {config.HOUSING_EMAIL}. "
+                f"For anything urgent, call Campus Safety at {config.CAMPUS_SAFETY_PHONE}.",
+                kind="error", options=MAIN_MENU)
 
         state["history"] += [{"role": "user", "content": message},
                              {"role": "assistant", "content": reply.text}]
@@ -263,11 +286,42 @@ class HousingAgent:
         recent = "\n".join(f"{m['role']}: {m['content']}" for m in state["history"][-6:]) or "(none)"
         draft = state.get("draft") or {}
         draft_text = "\n".join(f'"{k}": "{v}"' for k, v in draft.items() if v) or "(no ticket in progress)"
-        return llm.chat_json([
-            {"role": "system", "content": ANALYZE_PROMPT},
-            {"role": "user", "content": f"CONVERSATION SO FAR:\n{recent}\n\n"
-                                        f"CURRENT TICKET DRAFT:\n{draft_text}\n\nLATEST MESSAGE: {message}"},
-        ])
+        problems = []
+        try:
+            analysis = _tidy(llm.chat_json([
+                {"role": "system", "content": ANALYZE_PROMPT},
+                {"role": "user", "content": f"CONVERSATION SO FAR:\n{recent}\n\n"
+                                            f"CURRENT TICKET DRAFT:\n{draft_text}\n\nLATEST MESSAGE: {message}"},
+            ], problems))
+        except Exception as err:                 # broken JSON twice, or the AI can't be reached at all
+            problems.append(f"{type(err).__name__}: {err}"[:300])
+            analysis = self._fallback_analysis(message, state)
+        if problems:                             # logged even when the retry worked, so we see how often
+            write_log({"event": "analyze_problem", "message": message, "problems": problems,
+                       "used_fallback": bool(analysis.get("fallback"))})
+        return analysis
+
+    def _fallback_analysis(self, message: str, state: dict) -> dict:
+        """A rough, rule-based reading for when the AI can't help: the safety nets, repairs and
+        ticket lookups keep working (only free-form understanding and other languages suffer)."""
+        text = message.lower()
+        draft_open = bool((state.get("draft") or {}).get("issue"))
+        building = next((b for b in config.BUILDINGS if b.split()[0].lower() in text), None)
+        ticket_id = re.search(r"\bav-?\s?(\d{4})\b", text)
+        room = re.search(r"\b([a-z]?\d{2,4}[a-z]?)\b", re.sub(r"\bav-?\s?\d{4}\b", " ", text))
+        if ticket_id or "status" in text or "my ticket" in text:
+            intent = "ticket_status"
+        elif EMERGENCY_PATTERN.search(message):
+            intent = "emergency"
+        elif REPAIR_PATTERN.search(message) or (draft_open and (building or room)):
+            intent = "maintenance"
+        else:
+            intent = "question"
+        new_problem = intent in ("maintenance", "emergency") and not draft_open
+        return {"fallback": True, "language": state.get("language", "English"), "intent": intent,
+                "search_query": message, "ticket_id": f"AV-{ticket_id.group(1)}" if ticket_id else None,
+                "cancel": False, "ticket": {"building": building, "room": room.group(1).upper() if room else None,
+                                            "issue": message.strip()[:120] if new_problem else None}}
 
     # ---------- step 2: act ----------
     def _act(self, message: str, analysis: dict, state: dict, channel: str) -> AgentReply:

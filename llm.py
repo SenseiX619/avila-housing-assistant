@@ -70,11 +70,31 @@ def chat(messages: list[dict], json_mode: bool = False,
     raise RuntimeError(f"The AI service is unavailable right now: {last_error}")
 
 
-def chat_json(messages: list[dict]) -> dict:
-    """Ask for a JSON answer and turn it into a Python dict (tolerates stray text around it)."""
-    raw = chat(messages, json_mode=True, temperature=0)
+class BadJSON(Exception):
+    """The AI didn't return a JSON object, even after one retry."""
+
+
+def _parse_json(raw: str) -> dict | None:
+    """The JSON object in the reply (tolerates stray text around it), or None."""
     try:
-        return json.loads(raw)
+        value = json.loads(raw)
     except json.JSONDecodeError:
         match = re.search(r"\{.*\}", raw, re.S)
-        return json.loads(match.group(0)) if match else {}
+        try:
+            value = json.loads(match.group(0)) if match else None
+        except json.JSONDecodeError:
+            value = None
+    return value if isinstance(value, dict) else None
+
+
+def chat_json(messages: list[dict], problems: list | None = None) -> dict:
+    """Ask for a JSON answer and return it as a dict. If the reply isn't a valid JSON object, ask once
+    more; if that fails too, raise BadJSON. Anything that went wrong is added to `problems`."""
+    problems = [] if problems is None else problems
+    for _ in range(2):
+        raw = chat(messages, json_mode=True, temperature=0)
+        result = _parse_json(raw)
+        if result is not None:
+            return result
+        problems.append(f"not a JSON object: {raw[:200]!r}")
+    raise BadJSON("; ".join(problems))
