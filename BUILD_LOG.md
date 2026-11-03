@@ -330,3 +330,29 @@ student flipping through the handbook finds it on the page printed **14**.
 
 **Tested:** 33 offline checks (Lockouts = printed p. 14, PDF p. 15). With the real AI: lockout fee
 -> p. 14-15, guests -> p. 14, smoking -> p. 17; each checked against the printed handbook pages.
+
+---
+
+## v1.6-safe-json - The agent keeps working when the AI misbehaves
+
+**Risk:** every message starts with ANALYZE, which must return JSON. Before, if gpt-oss sent broken
+JSON the student saw "Sorry, I'm having trouble right now (Expecting ',' delimiter: line 1...)",
+technical text on the projector. If Groq was down, nothing worked at all, not even emergencies.
+
+**Fix:**
+1. **Retry once:** `llm.chat_json` asks again if the reply isn't a JSON object, then gives up with
+   `BadJSON`. (Groq also rejects invalid JSON itself, which already moves the call to the backup model.)
+2. **Tidy the shape:** valid JSON can still be wrong (`"ticket": "none"`, `"intent": "Emergency!"`).
+   `_tidy()` coerces it into the shape the agent expects, so a sloppy answer can't crash it.
+3. **Safe fallback:** if the AI fails twice or can't be reached, a rule-based reading takes over
+   (danger words, repair words, building names, room and ticket numbers). Emergencies still get the
+   safety message, repairs still become tickets, ticket lookups still work. Tapped buttons never
+   needed the AI anyway.
+4. **Log, don't show:** every problem goes to `data/conversation_log.jsonl` (`"event": "analyze_problem"`,
+   with `"used_fallback"`), even when the retry worked, so we can see how often it happens. Students
+   only see a friendly line plus the main buttons.
+
+**Tested:** 39 offline checks, including the AI sending garbage on every message (a repair still
+becomes a ticket) and the AI being unreachable (smoke still gets the safety message and an
+emergency ticket). With the real AI: all five flows again, 0 JSON problems; none in any real run
+today (about 40 ANALYZE calls).

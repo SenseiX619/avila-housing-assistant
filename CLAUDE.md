@@ -73,7 +73,7 @@ Ask me before anything big or hard to undo.
    e) "What's the status of my ticket?" -> correct status
 3. DONE (v1.5-printed-pages): citations use the number printed on each page (exactly 1 lower than
    the PDF page; Lockouts is printed p. 14, PDF p. 15). Chunks keep both: page and pdf_page.
-4. gpt-oss reliability: make sure the ANALYZE call always returns valid JSON. If it doesn't,
+4. DONE (v1.6-safe-json): gpt-oss reliability: make sure the ANALYZE call always returns valid JSON. If it doesn't,
    retry once, then fall back safely. Log failures.
 5. Speed: if a reply takes more than ~4 seconds, find out why and fix it.
 6. Demo polish: a "Reset demo" button on the dashboard (clear tickets + load sample tickets),
