@@ -40,14 +40,8 @@ if ok:
     except Exception as err:
         report(False, "Groq AI responds", f"{err}  - check the key is correct and you're online")
 
-# 4. Voice output (optional - the app still works without it)
-try:
-    import voice
-    audio = voice.speak("Testing")
-    print("  [PASS] Voice replies work" if audio else
-          "  [WARN] Voice replies unavailable right now - the app will still work as text")
-except Exception as err:
-    print(f"  [WARN] Voice replies unavailable ({err}) - the app will still work as text")
+# (No voice-output check: since v1.2 the assistant always answers in writing.)
+print("  [TIP]  For the mic: make sure Windows uses the laptop microphone (Settings > System > Sound > Input)")
 
 print("\nAll good! Starting the app...\n" if ok else "\nFix the [FAIL] items above, then try again.\n")
 sys.exit(0 if ok else 1)
