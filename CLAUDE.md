@@ -33,6 +33,7 @@ speech-to-text: whisper-large-v3-turbo), SQLite, rank_bm25 keyword search, pypdf
 - llm.py: the ONLY file that calls the AI; picks the first model this key can use from config.CHAT_MODELS
 - config.py: every setting (buildings, phone numbers, models, deadlines)
 - fake_llm.py: offline stand-in AI for tests (set FAKE_LLM=1)
+- tests/test_flows.py, test.bat: offline tests for the demo flows (temporary database and log, never the real ones)
 - check_setup.py, setup.bat, run.bat: Windows setup and pre-flight check
 - BUILD_LOG.md: what we built, why, and what broke, per version
 - data/conversation_log.jsonl: every turn (what was heard, what the AI understood, what we did). READ THIS FIRST when debugging.
@@ -48,6 +49,8 @@ speech-to-text: whisper-large-v3-turbo), SQLite, rank_bm25 keyword search, pypdf
    and a git tag (v1.3-... and up).
 7. Test before saying it's done: run the offline tests with FAKE_LLM=1 (streamlit.testing AppTest),
    then tell me exactly what to try in the real app.
+   Command: `.venv\Scripts\python -m unittest discover -s tests -v` (or double-click test.bat).
+   Add a test for every fix.
 
 ## Tasks, in order
 Work through these one at a time and stop after each one so I can check it.
