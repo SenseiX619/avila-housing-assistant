@@ -34,9 +34,11 @@ import config                                    # noqa: E402
 
 TMP = Path(tempfile.mkdtemp(prefix="avila-tests-"))
 config.DB_FILE = TMP / "tickets.db"              # set BEFORE tickets.py is imported
+config.TICKET_EMAIL_TO = config.SMTP_USER = config.SMTP_APP_PASSWORD = ""   # tests never send real email
 
 import agent                                     # noqa: E402
 import llm                                       # noqa: E402
+import notify                                    # noqa: E402
 import voice                                     # noqa: E402
 from knowledge import Retriever                  # noqa: E402
 from streamlit.testing.v1 import AppTest         # noqa: E402
@@ -346,6 +348,51 @@ class AgentFlows(unittest.TestCase):
         self.assertNotIn("index exploded", reply.text)
         self.assertEqual(reply.options, agent.MAIN_MENU)
         self.assertTrue(any("index exploded" in row for row in self.last_log_rows()))
+
+    # ---------- ticket emails (all faked - nothing is really sent) ----------
+    def email_settings(self):
+        return mock.patch.multiple(config, TICKET_EMAIL_TO="staff@example.edu", SMTP_USER="team@gmail.com",
+                                   SMTP_APP_PASSWORD="fake app password")
+
+    def test_every_new_ticket_is_emailed(self):
+        """a finished repair report hands the new ticket to the emailer"""
+        with mock.patch.object(notify, "send_ticket_email") as send:
+            for message in (agent.REPAIR, "🔥 Heat / AC", "Thompson Hall", "214"):
+                ticket = self.say(message).ticket
+        send.assert_called_once()
+        self.assertEqual(send.call_args.args[0]["code"], ticket["code"])
+
+    def test_ticket_email_content_and_sending(self):
+        """the email says what, where, how urgent and the deadline, and goes to TICKET_EMAIL_TO"""
+        ticket = self.store.create("Thompson Hall", "214", "Heater not working", "Heating/AC", "urgent",
+                                   channel="voice", student_message="My heater isn't working")
+        results = []
+        with self.email_settings(), mock.patch("smtplib.SMTP") as smtp:
+            self.assertTrue(notify.send_ticket_email(ticket, on_done=results.append, background=False))
+        server = smtp.return_value.__enter__.return_value
+        server.login.assert_called_once_with("team@gmail.com", "fake app password")
+        email = server.send_message.call_args.args[0]
+        self.assertEqual(email["To"], "staff@example.edu")
+        self.assertIn(ticket["code"], email["Subject"])
+        self.assertIn("URGENT", email["Subject"])
+        self.assertIn("Thompson Hall, room 214", email.get_content())
+        self.assertIn("My heater isn't working", email.get_content())
+        self.assertEqual(results, ["sent"])
+
+    def test_no_email_settings_no_email(self):
+        """email not set up in .env -> nothing is sent, and the ticket still works"""
+        ticket = self.store.create("Wylie Hall", "108", "Sink leaking")
+        with mock.patch("smtplib.SMTP") as smtp:
+            self.assertFalse(notify.send_ticket_email(ticket, background=False))
+        smtp.assert_not_called()
+
+    def test_failed_email_never_breaks_anything(self):
+        """wrong password or no internet -> 'failed: ...' in the log, no crash"""
+        ticket = self.store.create("Wylie Hall", "108", "Sink leaking")
+        results = []
+        with self.email_settings(), mock.patch("smtplib.SMTP", side_effect=OSError("no internet")):
+            notify.send_ticket_email(ticket, on_done=results.append, background=False)
+        self.assertTrue(results[0].startswith("failed: OSError"))
 
     def test_every_turn_is_logged(self):
         """every turn goes into the conversation log (here: the temporary test log)"""

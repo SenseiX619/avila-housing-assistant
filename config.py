@@ -65,6 +65,15 @@ CHAT_MODELS = [
 ]
 SPEECH_MODEL = "whisper-large-v3-turbo"     # voice -> text
 
+# ---------- Ticket emails (optional) ----------
+# Every new ticket is emailed to TICKET_EMAIL_TO, sent from a Gmail account (SMTP_USER) using a Gmail
+# "app password" (SMTP_APP_PASSWORD). All three live in .env (or Streamlit Secrets), never in the code.
+# Leave them empty and the app simply doesn't send emails.
+TICKET_EMAIL_TO = _secret("TICKET_EMAIL_TO")
+SMTP_USER = _secret("SMTP_USER")
+SMTP_APP_PASSWORD = _secret("SMTP_APP_PASSWORD")
+SMTP_HOST, SMTP_PORT = "smtp.gmail.com", 587
+
 # FAKE_LLM=1 runs the app with a simple rule-based stand-in instead of Groq.
 # We use it for testing without internet. Never use it for the real demo.
 FAKE_LLM = os.getenv("FAKE_LLM", "0") == "1"

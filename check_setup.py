@@ -41,6 +41,11 @@ if ok:
         report(False, "Groq AI responds", f"{err}  - check the key is correct and you're online")
 
 # (No voice-output check: since v1.2 the assistant always answers in writing.)
+import notify
+if notify.is_configured():
+    print(f"  [PASS] New tickets are emailed to {config.TICKET_EMAIL_TO}")
+else:
+    print("  [INFO] Ticket emails are off (add TICKET_EMAIL_TO, SMTP_USER, SMTP_APP_PASSWORD to .env)")
 print("  [TIP]  For the mic: make sure Windows uses the laptop microphone (Settings > System > Sound > Input)")
 
 print("\nAll good! Starting the app...\n" if ok else "\nFix the [FAIL] items above, then try again.\n")

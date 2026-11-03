@@ -28,6 +28,7 @@ from dataclasses import dataclass, field
 
 import config
 import llm
+import notify
 from knowledge import Retriever
 from tickets import TicketStore
 
@@ -391,6 +392,9 @@ class HousingAgent:
             language=language, channel=channel, student_message=draft.get("student_message", ""))
         state["draft"] = None
         state["my_tickets"].append(ticket["code"])
+        # Email it to housing staff (in the background; the result goes to the conversation log).
+        notify.send_ticket_email(ticket, on_done=lambda result: write_log(
+            {"event": "ticket_email", "ticket": ticket["code"], "to": config.TICKET_EMAIL_TO, "result": result}))
         return ticket
 
     def _handle_maintenance(self, message, details, language, state, channel) -> AgentReply:
