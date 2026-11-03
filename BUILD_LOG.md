@@ -301,4 +301,8 @@ standing an alarm down, make two independent signals agree.
 on the real chat page. All five flows again with the real AI and Whisper: every reply in about
 1.2 seconds or less. On the already-running app, the four-tap repair made ticket AV-1008 instantly.
 
+**Update (Nov 3):** a screenshot of Sensei's Chrome tab showed the old warning "The recording was
+silent", so the mic did record; the laptop mic was the default (48% volume, not muted). The likely
+cause was the old check that averaged loudness over the whole clip, which is what v1.4 replaced.
+
 **Lesson:** log failures, not just successes. The worst bug is the one that leaves no trace.
