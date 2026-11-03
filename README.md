@@ -150,6 +150,7 @@ Every step is a Git tag. Read `BUILD_LOG.md` alongside:
 | `v1.7-fast-failover` | Instant switch to a backup model when one runs out of free tokens |
 | `v1.8-demo-ready` | Reset demo button, projector settings (light theme, no developer buttons), tidier table |
 | `v1.9-cloud-ready` | Pinned versions, handbook index included, ready for a free cloud copy |
+| `v1.10-phone-qr` | QR code to open the app on phones (works once the app is online) |
 
 ```
 git checkout v0.3-qa-chat          # see the app as it was at that step

@@ -94,5 +94,5 @@ Ask me before anything big or hard to undo.
   silent; v1.4 uses the loudest moment. (Windows' mic history said Chrome hadn't used the mic since
   June; that turned out to be misleading.) Not retested yet: that tab still shows the old version
   ("File change - Rerun" at the top). Click Rerun or reload first.
-- Waiting on: my retest with the mic and the buttons. Then read data/conversation_log.jsonl.
+- Nov 3: the LAPTOP mic itself is silent (Windows Sound meter does not move; recordings are exact 0.0). Not an app bug. Fix: headset, or deploy online and use a phone (QR code is built, v1.10-phone-qr). Deploy postponed.
 - Known, for later tasks: (speed fixed in v1.7) free tier = 8,000 tokens/min PER MODEL; we switch models when one runs out.

@@ -421,3 +421,18 @@ dashboard at 1280x720 in a practice copy with its own database: reset worked, al
 
 **Not done (Sensei's call):** the deploy itself was skipped for now. The README steps take about
 10 minutes when needed.
+
+---
+
+## v1.10-phone-qr - "Scan to try it on your phone"
+
+**Why:** Sensei's laptop microphone sends silence even to Windows (its Sound meter doesn't move),
+so voice can't work on that PC. A phone's microphone does work, but only over https, which means
+the online copy. A QR code is also the easiest way in for students: nothing to install or type.
+
+**What:** `phone_link.py` turns the app's online address into a purple QR code. It sits at the top
+of the dashboard's sidebar (for the projector) and in the student sidebar. It finds the address by
+itself (or `APP_URL`), and on "localhost" it explains how to get a phone link instead.
+
+**Status:** built and tested (44 offline checks). It switches on once the app is online. The
+deploy was put off for now (Sensei's call); the README has the steps.
