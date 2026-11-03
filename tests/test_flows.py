@@ -152,6 +152,11 @@ class AgentFlows(unittest.TestCase):
         self.assertEqual(reply.kind, "ask_details")
         self.assertNotIn(agent.GREETING, reply.text)
 
+    def test_b_repair_net_understands_phone_apostrophes(self):
+        """(b) phones type a curly apostrophe ("isn’t"): the repair net still recognises it"""
+        self.assertTrue(agent.REPAIR_PATTERN.search("My heater isn’t working"))
+        self.assertTrue(agent.REPAIR_PATTERN.search("The door won’t lock"))
+
     def test_c_spanish_reply_english_ticket(self):
         """(c) Spanish repair -> reply translated to Spanish, ticket saved in English"""
         analysis = ai_said("maintenance", language="Spanish", building="Wylie Hall", room="108",

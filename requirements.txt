@@ -1,8 +1,8 @@
-streamlit>=1.50
-pypdf>=4.0
-rank_bm25>=0.2.2
-groq>=0.11
-python-dotenv>=1.0
-edge-tts>=6.1
-pandas>=2.0
-requests>=2.31
+# Exact versions we tested (Nov 2026), so a new release can't break the demo.
+streamlit==1.66.1
+pypdf==6.21.4
+rank_bm25==0.2.2
+groq==1.7.0
+python-dotenv==1.2.4
+pandas==3.1.0
+requests==2.34.2

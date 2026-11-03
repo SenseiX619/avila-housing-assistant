@@ -64,7 +64,6 @@ CHAT_MODELS = [
     "llama-3.3-70b-versatile",    # only works on Enterprise keys
 ]
 SPEECH_MODEL = "whisper-large-v3-turbo"     # voice -> text
-TTS_VOICE = "en-US-AvaMultilingualNeural"   # text -> voice (free edge-tts, speaks many languages)
 
 # FAKE_LLM=1 runs the app with a simple rule-based stand-in instead of Groq.
 # We use it for testing without internet. Never use it for the real demo.

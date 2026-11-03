@@ -134,7 +134,7 @@ SAFETY_REMINDER = (f"If something is smoking, beeping or unsafe right now, call 
 
 
 REPAIR_PATTERN = re.compile(
-    r"\b(broken|broke|not working|isn'?t working|doesn'?t work|won'?t (turn on|work|lock|close|open|flush|drain)|"
+    r"\b(broken|broke|not working|isn['’]?t working|doesn['’]?t work|won['’]?t (turn on|work|lock|close|open|flush|drain)|"
     r"stopped working|leak(s|ing)?|clogged|no (heat|hot water|water|power|internet|wifi)|"
     r"(heater|heating|ac|a/c|air conditioning|sink|toilet|shower|light|outlet|fridge|door|lock|window)\b.{0,25}"
     r"\b(broken|out|dead|stuck|loud|dripping|not))", re.I)
