@@ -29,10 +29,6 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 os.environ["FAKE_LLM"] = "1"                     # set BEFORE config is imported
 
-# Hide two harmless messages from Streamlit's test runner so real failures stand out.
-logging.getLogger("streamlit.runtime.scriptrunner_utils.script_run_context").setLevel(logging.ERROR)
-warnings.filterwarnings("ignore", message="The inplace keyword")
-
 import config                                    # noqa: E402
 
 TMP = Path(tempfile.mkdtemp(prefix="avila-tests-"))
@@ -45,6 +41,15 @@ from streamlit.testing.v1 import AppTest         # noqa: E402
 from tickets import TicketStore                  # noqa: E402
 
 agent.LOG_FILE = TMP / "conversation_log.jsonl"
+
+
+def setUpModule():
+    # Hide two harmless notes from Streamlit so real failures stand out: a pandas deprecation
+    # notice from its chart code, and "missing ScriptRunContext" from running pages in a test.
+    # (Done here, not at the top, because the test runner resets warning filters when it starts.)
+    warnings.filterwarnings("ignore", message="The inplace keyword")
+    logging.getLogger("streamlit.runtime.scriptrunner_utils.script_run_context").addFilter(
+        lambda record: "missing ScriptRunContext" not in record.getMessage())
 
 
 def ai_said(intent, language="English", ticket_id=None, **ticket):
@@ -117,15 +122,69 @@ class AgentFlows(unittest.TestCase):
         self.assertEqual(reply.ticket["language"], "Spanish")
         self.assertEqual(reply.ticket["urgency"], "urgent")
 
-    def test_d_emergency_safety_message_comes_first(self):
-        """(d) smoke from an outlet -> 911 and Campus Safety BEFORE the emergency ticket"""
+    def test_d_smoke_calls_campus_safety_first(self):
+        """(d) smoke from an outlet -> Campus Safety first, 911 as the backup, then the emergency ticket"""
         reply = self.say("There's smoke coming from an outlet in Buchanan 302")
         self.assertEqual(reply.kind, "emergency")
         self.assertEqual(reply.ticket["urgency"], "emergency")
         self.assertEqual((reply.ticket["building"], reply.ticket["room"]), ("Buchanan Hall", "302"))
-        self.assertIn(config.CAMPUS_SAFETY_PHONE, reply.text)
+        self.assertLess(reply.text.index(config.CAMPUS_SAFETY_PHONE), reply.text.index("911"))
         self.assertLess(reply.text.index("911"), reply.text.index(reply.ticket["code"]))
+
+    def test_d_real_fire_calls_911_first(self):
+        """(d) a real fire -> 911 first, then Campus Safety, then the emergency ticket"""
+        reply = self.say("There's a fire in Buchanan 302!")
+        self.assertEqual(reply.kind, "emergency")
+        self.assertLess(reply.text.index("911"), reply.text.index(config.CAMPUS_SAFETY_PHONE))
         self.assertLess(reply.text.index(config.CAMPUS_SAFETY_PHONE), reply.text.index(reply.ticket["code"]))
+
+    def test_d_fire_alarm_says_leave_the_building_first(self):
+        """(d) fire alarm going off -> leave the building first, then Campus Safety, 911 as the backup"""
+        reply = self.say("The fire alarm is going off in Wylie")
+        self.assertEqual(reply.kind, "emergency")
+        self.assertLess(reply.text.index("leave the building"), reply.text.index(config.CAMPUS_SAFETY_PHONE))
+        self.assertLess(reply.text.index(config.CAMPUS_SAFETY_PHONE), reply.text.index("911"))
+
+    def test_d_spanish_fire_calls_911_first(self):
+        """(d) a fire reported in Spanish -> 911 first (read from the AI's English summary)"""
+        analysis = ai_said("emergency", language="Spanish", building="Wylie Hall", room="108",
+                           issue="Fire in the room", urgency="emergency")
+        with mock.patch("llm.chat_json", return_value=analysis):
+            reply = self.say("¡Hay un incendio en mi cuarto! Wylie 108")
+        self.assertLess(reply.text.index("911"), reply.text.index(config.CAMPUS_SAFETY_PHONE))
+
+    def test_d_rules_question_about_smoking_is_not_an_emergency(self):
+        """(d) 'Can I smoke in my room?' -> safety reminder first, then a normal handbook answer"""
+        with mock.patch("llm.chat_json", return_value=ai_said("question")):
+            reply = self.say("Can I smoke in my room?")
+        self.assertEqual(reply.kind, "answer")
+        self.assertTrue(reply.text.startswith(agent.SAFETY_REMINDER))
+        self.assertFalse(self.state.get("draft"), "a rules question must not start an emergency ticket")
+
+    def test_d_beeping_smoke_detector_is_an_urgent_repair(self):
+        """(d) beeping smoke detector -> safety reminder first, then an URGENT repair (not an emergency)"""
+        analysis = ai_said("maintenance", building="Wylie Hall", room="210",
+                           issue="Smoke detector beeping", urgency="normal")
+        with mock.patch("llm.chat_json", return_value=analysis):
+            reply = self.say("My smoke detector keeps beeping, I'm in Wylie 210")
+        self.assertEqual(reply.kind, "ticket")
+        self.assertEqual(reply.ticket["urgency"], "urgent")
+        self.assertTrue(reply.text.startswith(agent.SAFETY_REMINDER))
+
+    def test_d_ai_alone_cannot_call_off_danger_words(self):
+        """(d) safety net: the AI says 'question' for real smoke -> still an emergency"""
+        with mock.patch("llm.chat_json", return_value=ai_said("question")):
+            reply = self.say("There's smoke coming out of my outlet")
+        self.assertEqual(reply.kind, "emergency")
+
+    def test_d_danger_net_reads_the_ai_english_summary(self):
+        """(d) safety net: smoke reported in Spanish, AI files it as a repair -> still an emergency"""
+        analysis = ai_said("maintenance", language="Spanish", building="Buchanan Hall", room="302",
+                           issue="Smoke coming from an outlet", urgency="normal")
+        with mock.patch("llm.chat_json", return_value=analysis):
+            reply = self.say("Sale humo de un enchufe en Buchanan 302")
+        self.assertEqual(reply.kind, "emergency")
+        self.assertEqual(reply.ticket["urgency"], "emergency")
 
     def test_d_emergency_net_catches_ai_calling_it_a_repair(self):
         """(d) safety net: the AI says 'maintenance' for smoke -> still an emergency"""

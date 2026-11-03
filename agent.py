@@ -101,9 +101,32 @@ GREETING = ("Hi! I'm the Avila Housing Assistant. I can answer questions about l
 
 # Safety net: if the AI ever misses an emergency, these words still trigger the safety message.
 EMERGENCY_PATTERN = re.compile(
-    r"\b(fire|smoke|smoking outlet|gas smell|smell(s|ing)? (of )?gas|carbon monoxide|co alarm|flood(ing|ed)?|"
+    r"\b(fire|flames?|smoke|smoking outlet|gas smell|smell(s|ing)? (of )?gas|carbon monoxide|co alarm|flood(ing|ed)?|"
     r"water (is )?(pouring|everywhere|gushing)|sparks?|sparking|burning smell|unconscious|bleeding|someone (is )?hurt)\b",
     re.I)
+
+# Who to call first. Housing Handbook, Safety & Emergency Policies (printed p. 23): "In Case of Emergency,
+# contact Campus Safety at 816.985.6079 or 911. For extreme emergencies, call 911."
+# So: a real fire, someone hurt, gas or carbon monoxide -> 911 first. Everything else (smoke, sparks,
+# flooding, alarms) -> Campus Safety first. Both numbers are always shown.
+CALL_911_PATTERN = re.compile(
+    r"\b(on fire|fire (in|on|at|is|has|started|spreading)|(a|the) fire(?! (alarm|drill|extinguisher|door|hazard|safety|pit))|"
+    r"flames?|burning down|unconscious|unresponsive|not breathing|can'?t breathe|collapsed|overdos(e|ed|ing)|seizure|"
+    r"bleeding|someone (is |got )?(hurt|injured)|gas (smell|leak)|smell(s|ing)? (of )?gas|carbon monoxide|co alarm)\b",
+    re.I)
+
+# A fire alarm sounding means leave first (handbook, Fire Drills: "all residents must evacuate the buildings").
+ALARM_PATTERN = re.compile(
+    r"\b((fire|smoke) alarms?\b.{0,20}|alarms? (is |are )?)(going off|went off|sounding|ringing)\b", re.I)
+
+# Danger words that aren't happening right now: a rules question ("Can I smoke in my room?",
+# "Are candles a fire hazard?") or a smoke detector beeping. Only counts when the AI agrees (see respond()).
+NOT_AN_EMERGENCY = re.compile(
+    r"^\W*(can|may|could|am|are) (i|we)\b|\b(allowed|permitted|policy|policies|rules?|hazards?|drills?|extinguishers?)\b|"
+    r"\bsmoke (detector|alarm)s?\b.{0,30}\b(beep|chirp|batter)", re.I)
+
+SAFETY_REMINDER = (f"If something is smoking, beeping or unsafe right now, call Campus Safety at "
+                   f"{config.CAMPUS_SAFETY_PHONE}, or 911 if you see fire or someone is hurt.")
 
 
 REPAIR_PATTERN = re.compile(
@@ -171,10 +194,22 @@ class HousingAgent:
             if intent == "smalltalk" and len(message.split()) > 6:
                 intent = "question"
 
+            # Safety net #1: danger words (in the message, or in the AI's English summary of it).
+            # The AI alone can't talk them down. Only when the AI AND the wording both say nothing is
+            # happening right now ("Can I smoke in my room?", "my smoke detector keeps beeping") do we
+            # reply normally - after a one-line safety reminder with both numbers.
+            words = f"{message} {details.get('issue') or ''}"
+            danger = bool(EMERGENCY_PATTERN.search(words))
+            reminder = danger and intent != "emergency" and bool(NOT_AN_EMERGENCY.search(words))
+            if reminder:
+                danger = False
+                if details.get("urgency") in (None, "", "null", "normal"):
+                    details = dict(details, urgency="urgent")      # e.g. a beeping smoke detector: 2-day fix
+
             if analysis.get("cancel") and state.get("draft"):
                 state["draft"] = None
                 reply = AgentReply(self._say("No problem, I've cancelled that request.", language), kind="smalltalk")
-            elif intent == "emergency" or EMERGENCY_PATTERN.search(message):
+            elif intent == "emergency" or danger:
                 reply = self._handle_emergency(message, details, language, state, channel)
             elif intent == "ticket_status":
                 reply = self._handle_status(analysis.get("ticket_id") or message, language, state)
@@ -186,6 +221,8 @@ class HousingAgent:
                 reply = AgentReply(self._say(text, language), kind="smalltalk")
             else:
                 reply = self._answer_question(message, analysis.get("search_query") or message, language, state)
+            if reminder:
+                reply.text = f"{self._say(SAFETY_REMINDER, language)}\n\n{reply.text}"
         except Exception as err:
             reply = AgentReply(
                 f"Sorry, I'm having trouble right now ({err}). For housing help, email "
@@ -265,8 +302,16 @@ class HousingAgent:
         draft = self._merge_draft(details, state, message)
         draft["urgency"] = "emergency"
 
-        text = (f"This sounds like an emergency. If anyone is in danger, or there is fire or smoke, "
-                f"get to safety and call 911 now. Then call Campus Safety at {config.CAMPUS_SAFETY_PHONE}.")
+        words = f"{message} {details['issue']}"
+        if CALL_911_PATTERN.search(words):                                 # real fire, someone hurt, gas
+            text = (f"This sounds like an emergency. Get to safety and call 911 now, "
+                    f"then call Campus Safety at {config.CAMPUS_SAFETY_PHONE}.")
+        elif ALARM_PATTERN.search(words):                                  # fire alarm sounding: leave first
+            text = (f"When the fire alarm sounds, everyone must leave the building. Go now, then call Campus "
+                    f"Safety at {config.CAMPUS_SAFETY_PHONE}. If you see flames or anyone is hurt, call 911.")
+        else:                                                              # smoke, sparks, flooding, beeping
+            text = (f"This could be dangerous. Call Campus Safety now at {config.CAMPUS_SAFETY_PHONE} so they can "
+                    f"check it right away. If you see flames or anyone is hurt, get to safety and call 911.")
         ticket = None
         if draft.get("building") and draft.get("room"):
             ticket = self._create_ticket(draft, language, channel, state)

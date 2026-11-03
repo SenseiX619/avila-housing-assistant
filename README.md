@@ -5,7 +5,8 @@ A free, 24/7 AI assistant for Avila University students living on campus. Studen
 
 - **Answers housing questions** from the official 2026-27 Housing Handbook, citing the page
 - **Creates maintenance tickets** by asking only for what's missing (building, room, issue)
-- **Puts safety first:** emergencies get 911 + Campus Safety (816-985-6079) before anything else
+- **Puts safety first:** the right number before anything else, as the handbook says: Campus Safety
+  (816-985-6079) for smoke, sparks, flooding or alarms; 911 first for a real fire or someone hurt
 - **Checks ticket status** ("what's happening with AV-1003?")
 
 Housing staff get a **live dashboard** that flags overdue repairs using Avila's own
@@ -26,7 +27,7 @@ flowchart LR
     A --> D{Python decides}
     D -->|question| K[Search Housing Handbook<br/>BM25] --> Ans[Answer with page citation]
     D -->|maintenance| M[Ask for missing details] --> DB[(SQLite tickets)]
-    D -->|emergency| E[911 + Campus Safety first] --> DB
+    D -->|emergency| E[Safety message first:<br/>Campus Safety, or 911 for fire] --> DB
     D -->|ticket status| DB
     DB --> Dash[Staff Dashboard<br/>live, overdue flags]
     Ans --> V[edge-tts<br/>spoken reply]
@@ -83,7 +84,9 @@ Open the **Student Assistant** on one screen and the **Staff Dashboard** on the 
    and reads the number out loud. **Switch screens: the ticket is already on the dashboard.**
 3. **Another language:** type *"Mi baño tiene una fuga en Wylie 108"*. The answer comes
    back in Spanish; the ticket is saved in English for staff.
-4. **Safety:** "There's smoke coming from an outlet in Buchanan 302" -> 911 and Campus Safety first.
+4. **Safety:** "There's smoke coming from an outlet in Buchanan 302" -> call Campus Safety first
+   (911 if there are flames or someone is hurt), then an EMERGENCY ticket. A real fire
+   ("There's a fire in my kitchen") gets 911 first.
 5. **Dashboard:** point at the ⚠️ OVERDUE flags: "these are Avila's own deadlines from the handbook."
 
 **Before you present:** run `run.bat` 30 minutes early, test the mic in the room, and keep

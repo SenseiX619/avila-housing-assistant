@@ -9,8 +9,12 @@ not to rebuild it. I'm learning, so explain every change in plain English.
 - Students type or speak (mic) to the assistant. It ALWAYS replies in writing (no text-to-speech).
 - Answers housing questions ONLY from the official 2026-27 Avila Housing Handbook, with page citations.
 - Creates maintenance tickets: asks only for missing details (issue, building, room), then saves a ticket like AV-1001.
-- Emergencies (fire, smoke, gas, flooding, sparks, someone hurt): tells them to call 911 and
-  Campus Safety at 816-985-6079 FIRST, then logs an emergency ticket.
+- Emergencies: safety message FIRST, then an emergency ticket. Who to call follows the handbook
+  (printed p. 23) and my call on Nov 2: a real fire, someone hurt, gas or carbon monoxide -> 911 first,
+  then Campus Safety at 816-985-6079. Smoke, sparks, flooding, beeping -> Campus Safety first, 911 if
+  there are flames or someone is hurt. Fire alarm sounding -> leave the building first. Both numbers
+  are always shown. Rules questions ("Can I smoke in my room?") and a beeping smoke detector get a
+  one-line safety reminder and a normal reply (the detector becomes an urgent repair), not an emergency.
 - Checks ticket status ("what's happening with AV-1003?").
 - Replies in the student's language (Spanish, Urdu, etc.); tickets are saved in English for staff.
 - Staff Dashboard (second page) auto-refreshes every 5s. It flags overdue tickets using the
@@ -41,6 +45,7 @@ speech-to-text: whisper-large-v3-turbo), SQLite, rank_bm25 keyword search, pypdf
 ## Rules (don't break these)
 1. AI understands, Python decides. Don't hand control flow to the AI.
 2. Keep both safety nets in agent.py: EMERGENCY_PATTERN and REPAIR_PATTERN. An emergency can never be downgraded.
+   The AI alone can't call off a danger word; only the AI and the NOT_AN_EMERGENCY wording together can.
 3. Never invent policies, fees or phone numbers. Answer only from handbook excerpts; otherwise point to HOUSING@avila.edu.
 4. Never print, log, or commit the .env file or the Groq key.
 5. Public info and fake demo data only. No real student records (FERPA).
@@ -61,7 +66,7 @@ Ask me before anything big or hard to undo.
    a) "Can my friend stay over this weekend?" -> answer + page citation
    b) mic: "My heater isn't working" -> asks building + room -> ticket -> appears on the dashboard
    c) Spanish: "Mi baño tiene una fuga en Wylie 108" -> Spanish reply, English ticket
-   d) "There's smoke coming from an outlet in Buchanan 302" -> 911 + Campus Safety first
+   d) "There's smoke coming from an outlet in Buchanan 302" -> Campus Safety first, 911 as the backup
    e) "What's the status of my ticket?" -> correct status
 3. Page numbers: citations currently use PDF page numbers, but the handbook's printed page
    numbers are about 2 lower (the Lockouts section is printed as p.13, but it's PDF page 15).
