@@ -436,3 +436,10 @@ itself (or `APP_URL`), and on "localhost" it explains how to get a phone link in
 
 **Status:** built and tested (44 offline checks). It switches on once the app is online. The
 deploy was put off for now (Sensei's call); the README has the steps.
+
+**Update (Nov 3): live at https://avila-housing.streamlit.app** (public repo
+github.com/SenseiX619/avila-housing-assistant; Groq key only in Streamlit Secrets). The first start
+hung on a loading circle; "Reboot app" fixed it. Checked live: a handbook question answered with
+"(Handbook p. 14)", and the dashboard shows the QR code. Online tickets are separate from the
+laptop's and reset when the app restarts or wakes from sleep, so press Reset demo on the online
+dashboard before presenting.
