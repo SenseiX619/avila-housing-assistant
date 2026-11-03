@@ -8,6 +8,7 @@ A free, 24/7 AI assistant for Avila University students living on campus. Studen
 - **Puts safety first:** the right number before anything else, as the handbook says: Campus Safety
   (816-985-6079) for smoke, sparks, flooding or alarms; 911 first for a real fire or someone hurt
 - **Checks ticket status** ("what's happening with AV-1003?")
+- **Tap instead of typing:** every reply has buttons for the next step, so a repair takes four taps
 
 Housing staff get a **live dashboard** that flags overdue repairs using Avila's own
 handbook deadlines (urgent: 2 days, regular: 2 weeks).
@@ -79,18 +80,21 @@ Open the **Student Assistant** on one screen and the **Staff Dashboard** on the 
 (click "Load sample tickets" first so the dashboard isn't empty).
 
 1. **Question:** "Can my friend stay over this weekend?" -> answer + handbook page.
-2. **Voice repair:** tap the mic, say *"The heater in my room isn't working."*
-   The agent asks for your building and room, you answer, it creates a ticket
-   and shows the ticket number. **Switch screens: the ticket is already on the dashboard.**
-3. **Another language:** type *"Mi baño tiene una fuga en Wylie 108"*. The answer comes
+2. **Voice repair:** tap the mic, say *"The heater in my room isn't working,"* tap stop.
+   The agent asks where: tap the hall button, then say or type the room. It creates a ticket.
+   **Switch screens: the ticket is already on the dashboard.**
+3. **Tap-only repair:** 🔧 Report a repair -> 💧 Leak / plumbing -> Wylie Hall -> type 108.
+   No sentences to type, no waiting for the AI.
+4. **Another language:** type *"Mi baño tiene una fuga en Wylie 108"*. The answer comes
    back in Spanish; the ticket is saved in English for staff.
-4. **Safety:** "There's smoke coming from an outlet in Buchanan 302" -> call Campus Safety first
-   (911 if there are flames or someone is hurt), then an EMERGENCY ticket. A real fire
-   ("There's a fire in my kitchen") gets 911 first.
-5. **Dashboard:** point at the ⚠️ OVERDUE flags: "these are Avila's own deadlines from the handbook."
+5. **Safety:** "There's smoke coming from an outlet in Buchanan 302" -> call Campus Safety first
+   (911 if there are flames or someone is hurt), then an EMERGENCY ticket, with call buttons.
+   A real fire ("There's a fire in my kitchen") gets 911 first.
+6. **Dashboard:** point at the ⚠️ OVERDUE flags: "these are Avila's own deadlines from the handbook."
 
 **Before you present:** run `run.bat` 30 minutes early, test the mic in the room, and keep
-a screen recording of the demo as a backup.
+a screen recording of the demo as a backup. In the browser, click the mic icon in the address
+bar and make sure the laptop's own microphone is selected, not a headset or game controller.
 
 ---
 
@@ -133,6 +137,7 @@ Every step is a Git tag. Read `BUILD_LOG.md` alongside:
 | `v1.1-models` | Free gpt-oss models; checks which models the key can use |
 | `v1.2-voice-fixes` | Silent-mic warning, repair safety net, written-only replies |
 | `v1.3-safety-tiers` | Saved tests; Campus Safety first, 911 for real fires, no false alarms |
+| `v1.4-click-first` | Buttons for every step, call buttons, shorter replies, mic fixes and logging |
 
 ```
 git checkout v0.3-qa-chat          # see the app as it was at that step

@@ -7,6 +7,9 @@ not to rebuild it. I'm learning, so explain every change in plain English.
 
 ## What the app does
 - Students type or speak (mic) to the assistant. It ALWAYS replies in writing (no text-to-speech).
+- Click-first (my call, Nov 2): every reply has buttons for the next step (repair -> what's broken ->
+  which hall -> room). Tapped buttons skip the AI (instant, no tokens). Keep replies short;
+  handbook answers are 1-3 sentences.
 - Answers housing questions ONLY from the official 2026-27 Avila Housing Handbook, with page citations.
 - Creates maintenance tickets: asks only for missing details (issue, building, room), then saves a ticket like AV-1001.
 - Emergencies: safety message FIRST, then an emergency ticket. Who to call follows the handbook
@@ -83,7 +86,10 @@ Ask me before anything big or hard to undo.
 - Working: setup, handbook loading, Groq key, AI replies, chat screen, tickets, dashboard.
 - Nov 2 (v1.3-safety-tiers): flows a-e all passed a dry run with the real AI and real Whisper
   (synthetic voice, temporary database). Emergency wording changed as described above.
-- Waiting on: my own test in the browser, especially the mic (flow b). Then read
-  data/conversation_log.jsonl to confirm what was heard and understood.
+- Nov 2 (v1.4-click-first): my first mic test failed with nothing logged. Mic checks fixed, every
+  recording now logged (heard / loudness / mic_problem), buttons added for every step.
+  This PC has two mics (laptop array + PS5 DualSense headset mic): check the browser's mic choice.
+- Waiting on: my retest with the mic and the buttons. Then read data/conversation_log.jsonl.
 - Known, for later tasks: free tier = 8,000 tokens/min, so replies slow to 5-14s after ~10 quick
-  messages (task 5). The real database's ticket counter is at AV-1008, not AV-1001 (task 6).
+  messages (task 5). Test ticket AV-1008 is in the real database; the counter isn't reset (task 6).
+  Streamlit shows a "Help agents write better apps" popup and a Deploy button (hide for the projector, task 6).

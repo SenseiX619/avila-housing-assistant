@@ -270,3 +270,31 @@ about 10 quick messages, replies slowed from 0.5 seconds to 5-14 seconds.
 
 **Lesson:** a safety net that ignores context cries wolf, and people learn to ignore it. Before
 standing an alarm down, make two independent signals agree.
+
+---
+
+## v1.4-click-first - Second real test: the mic heard nothing, and "make it easy to tap"
+
+**What broke:**
+1. Sensei's voice test left **no trace in the log**. Every recording was turned away before it
+   reached the assistant (a silent mic, or Whisper "hearing" phantom words like "Thank you."),
+   and those rejections were never logged. Windows lists two microphones on this PC, the
+   laptop's and a PS5 DualSense controller's headset mic, so the browser may have been
+   listening to the wrong one.
+2. The app that was already running kept the assistant in memory, so it was still answering
+   with the old code: "Can I smoke in my room?" still got "call 911" after v1.3 fixed it.
+
+**Fix:**
+- Mic: loudness is measured on the loudest 0.1 second, so a pause before speaking no longer
+  looks like silence. Repeated phantom phrases are caught too. The warning says to check which
+  mic the browser is using. Every recording is logged: what was heard, how loud, what went wrong.
+- The chat reloads the assistant whenever a code file changes. No restart needed.
+
+**New (Sensei's call: "click and speak or type... answer in steps... not too much to read"):**
+- Buttons under every reply for the next step. A repair is now four taps:
+  🔧 Report a repair -> 🔥 Heat / AC -> Thompson Hall -> type 214.
+- Tapped buttons skip the AI entirely: instant, and they don't use the free tier's tokens.
+- Emergencies show Call 911 / Call Campus Safety buttons, which dial on a phone.
+- Shorter replies everywhere. Handbook answers are 1-3 sentences.
+
+**Lesson:** log failures, not just successes. The worst bug is the one that leaves no trace.
