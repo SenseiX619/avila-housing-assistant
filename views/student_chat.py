@@ -6,7 +6,7 @@ import streamlit as st
 
 import config
 import voice
-from agent import GREETING, HousingAgent
+from agent import GREETING, HousingAgent, write_log
 from knowledge import Retriever
 from tickets import TicketStore
 
@@ -91,15 +91,20 @@ typed = st.chat_input("...or type your question here")
 user_text, channel = None, "text"
 if recording is not None:
     st.session_state.mic_round += 1          # new key = fresh, empty recorder next time
+    audio, problem = recording.getvalue(), None
     with st.spinner("Listening..."):
         try:
-            user_text = voice.transcribe(recording.getvalue())
+            user_text = voice.transcribe(audio)
             channel = "voice"
         except voice.NoSpeechHeard as err:
-            st.session_state.mic_problem = str(err)
+            problem = str(err)
         except Exception as err:
-            st.session_state.mic_problem = f"Couldn't process the recording ({err}). Try again or type instead."
-    if not user_text:
+            problem = f"Couldn't process the recording ({err}). Try again or type instead."
+    # Log every recording: a failed one never reaches the agent, so otherwise it leaves no trace.
+    write_log({"channel": "voice", "heard": user_text, "mic_problem": problem,
+               "audio_kb": round(len(audio) / 1024), "loudness": round(voice.loudness(audio), 4)})
+    if problem:
+        st.session_state.mic_problem = problem
         st.rerun()
 elif typed or st.session_state.get("pending"):
     user_text = typed or st.session_state.pop("pending")

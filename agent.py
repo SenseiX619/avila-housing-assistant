@@ -140,19 +140,23 @@ SHORT_HELLO = "Hey! What can I help you with - a housing question, or something 
 LOG_FILE = config.DATA_DIR / "conversation_log.jsonl"
 
 
-def log_turn(message: str, channel: str, analysis: dict, reply: "AgentReply") -> None:
-    """Write each turn to data/conversation_log.jsonl - what the student said, what the AI understood,
-    and what we did. Invaluable for debugging ("why did it say that?"). Demo data only - no real students."""
+def write_log(row: dict) -> None:
+    """Add one line to data/conversation_log.jsonl. Demo data only - no real students."""
     try:
         from datetime import datetime
-        row = {"time": datetime.now().isoformat(timespec="seconds"), "channel": channel, "message": message,
-               "analysis": analysis, "reply_kind": reply.kind, "reply": reply.text[:300],
-               "ticket": reply.ticket["code"] if reply.ticket else None}
         LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
         with open(LOG_FILE, "a", encoding="utf-8") as f:
-            f.write(json.dumps(row, ensure_ascii=False) + "\n")
+            f.write(json.dumps({"time": datetime.now().isoformat(timespec="seconds"), **row},
+                               ensure_ascii=False) + "\n")
     except Exception:
         pass                                  # logging must never break the chat
+
+
+def log_turn(message: str, channel: str, analysis: dict, reply: "AgentReply") -> None:
+    """Log each turn - what the student said, what the AI understood, and what we did.
+    Invaluable for debugging ("why did it say that?")."""
+    write_log({"channel": channel, "message": message, "analysis": analysis, "reply_kind": reply.kind,
+               "reply": reply.text[:300], "ticket": reply.ticket["code"] if reply.ticket else None})
 
 
 def normalize_building(value: str | None) -> str | None:

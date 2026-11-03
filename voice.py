@@ -16,13 +16,15 @@ import config
 import llm
 
 
-# What Whisper tends to "hear" in silence or noise. If that's all we got, the mic didn't pick up speech.
-WHISPER_GHOSTS = {"", "you", "thank you", "thank you.", "thanks for watching", "thanks for watching!",
-                  "thank you for watching", "thank you for watching.", "bye", "bye.", ".", "so", "okay."}
+# What Whisper tends to "hear" in silence or noise ("Thank you.", "you you", "¡Gracias!"). If a recording
+# turns into nothing but these words, the mic didn't pick up speech.
+GHOST_WORDS = {"thank", "thanks", "you", "for", "watching", "bye", "so", "okay", "ok", "gracias"}
 
-# Words Whisper might not know - helps it spell building names right.
-WHISPER_HINT = ("Avila University housing. Thompson Hall, Wylie Hall, Buchanan Hall, Villa Ventura. "
-                "Room 214. My heater isn't working. The sink is leaking.")
+# Words Whisper might not know - helps it spell building names right. Names only: example sentences
+# here can be echoed back by Whisper when a recording is unclear.
+WHISPER_HINT = "Avila University housing: Thompson Hall, Wylie Hall, Buchanan Hall, Villa Ventura, room, ticket AV."
+
+SILENT = 0.003          # loudness below this = the mic heard nothing
 
 
 class NoSpeechHeard(Exception):
@@ -30,31 +32,44 @@ class NoSpeechHeard(Exception):
 
 
 def loudness(wav_bytes: bytes) -> float:
-    """How loud the recording is, 0 (silent) to 1 (max). Lets us tell the student their mic isn't picking up."""
+    """How loud the loudest moment of the recording is, 0 (silent) to 1 (max). Measured in 0.1-second
+    slices, so a pause before or after speaking doesn't count against the student."""
     try:
         import array, io, wave
         with wave.open(io.BytesIO(wav_bytes)) as w:
             if w.getsampwidth() != 2:
                 return 1.0
+            slice_size = max(1, w.getframerate() * w.getnchannels() // 10)
             samples = array.array("h", w.readframes(w.getnframes()))
-        if not samples:
-            return 0.0
-        return (sum(s * s for s in samples[::4]) / len(samples[::4])) ** 0.5 / 32768
+        loudest = 0.0
+        for start in range(0, len(samples), slice_size):
+            part = samples[start:start + slice_size:4]
+            if part:
+                loudest = max(loudest, (sum(s * s for s in part) / len(part)) ** 0.5)
+        return loudest / 32768
     except Exception:
         return 1.0                       # can't measure -> don't block
 
 
+def is_ghost(text: str) -> bool:
+    words = re.findall(r"[a-z']+", text.lower())
+    return not words or all(w in GHOST_WORDS for w in words) or "amara.org" in text.lower()
+
+
 def transcribe(audio_bytes: bytes, filename: str = "speech.wav") -> str:
     """Turn a voice recording into text. Whisper detects the language automatically."""
+    if loudness(audio_bytes) < SILENT:
+        raise NoSpeechHeard("I couldn't hear anything. Check that the right microphone is selected (click the "
+                            "mic icon in your browser's address bar), then try again - or just type.")
     if config.FAKE_LLM:
         return "The heater in my room is not working"
-    if loudness(audio_bytes) < 0.003:
-        raise NoSpeechHeard("The recording was silent - your microphone may be muted or the wrong one is selected.")
     result = llm._groq().audio.transcriptions.create(
         file=(filename, audio_bytes), model=config.SPEECH_MODEL, prompt=WHISPER_HINT, temperature=0)
     text = (result.text or "").strip()
-    if text.lower().strip(" !?") in {g.strip(" !?") for g in WHISPER_GHOSTS}:
-        raise NoSpeechHeard(f'I only heard "{text}" - please try again and speak a bit closer to the mic.')
+    if is_ghost(text):
+        heard = f'only caught "{text}"' if text else "didn't catch any words"
+        raise NoSpeechHeard(f"I {heard}. Check the right microphone is selected, speak close to it, "
+                            f"then tap stop - or just type.")
     return text
 
 

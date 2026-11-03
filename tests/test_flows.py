@@ -63,15 +63,16 @@ def ai_said(intent, language="English", ticket_id=None, **ticket):
             "ticket_id": ticket_id, "cancel": False}
 
 
-def wav(volume: float) -> bytes:
-    """One second of a 16-bit test tone (volume 0 = silence), like the mic recorder sends."""
+def wav(volume: float, seconds: float = 1.0, silence_before: float = 0.0) -> bytes:
+    """A 16-bit test recording like the mic sends: optional silence, then a tone (volume 0 = silence)."""
+    rate = 16000
     buf = io.BytesIO()
     with wave.open(buf, "wb") as w:
         w.setnchannels(1)
         w.setsampwidth(2)
-        w.setframerate(16000)
-        w.writeframes(b"".join(struct.pack("<h", int(volume * 32767 * math.sin(i / 8)))
-                               for i in range(16000)))
+        w.setframerate(rate)
+        w.writeframes(b"\0\0" * int(silence_before * rate) + b"".join(
+            struct.pack("<h", int(volume * 32767 * math.sin(i / 8))) for i in range(int(seconds * rate))))
     return buf.getvalue()
 
 
@@ -244,10 +245,21 @@ class Voice(unittest.TestCase):
     """Mic checks that don't need Whisper."""
 
     def test_silent_recording_is_detected(self):
-        self.assertLess(voice.loudness(wav(0.0)), 0.003)
+        self.assertLess(voice.loudness(wav(0.0)), voice.SILENT)
 
     def test_normal_recording_passes(self):
-        self.assertGreater(voice.loudness(wav(0.2)), 0.003)
+        self.assertGreater(voice.loudness(wav(0.2)), voice.SILENT)
+
+    def test_pause_before_speaking_still_counts(self):
+        """3 seconds of silence, then quiet speech: still heard (the old average-loudness check said 'silent')"""
+        self.assertGreater(voice.loudness(wav(0.01, seconds=0.3, silence_before=3)), voice.SILENT)
+
+    def test_whisper_phantom_phrases_are_caught(self):
+        for ghost in ["", "you", "Thank you.", "Thank you. Thank you.", "¡Gracias!",
+                      "Subtítulos realizados por la comunidad de Amara.org"]:
+            self.assertTrue(voice.is_ghost(ghost), ghost)
+        for real in ["My heater isn't working", "Thank you so much for fixing my heater"]:
+            self.assertFalse(voice.is_ghost(real), real)
 
 
 class Screens(unittest.TestCase):
@@ -293,6 +305,27 @@ class Screens(unittest.TestCase):
         self.chat("There's smoke coming from an outlet in Buchanan 302")
         alerts = [e.value for e in self.dashboard().error]
         self.assertTrue(any("EMERGENCY" in a and "Buchanan Hall" in a for a in alerts), alerts)
+
+    def record(self, audio: bytes):
+        at = self.chat()
+        at.audio_input[0].set_value(("clip.wav", audio, "audio/wav")).run()
+        self.assertFalse(at.exception, at.exception)
+        return at
+
+    def test_voice_recording_reaches_the_assistant(self):
+        """(b) on screen: a recording is transcribed, shown with 🎤, and answered"""
+        at = self.record(wav(0.2))
+        said = [m.markdown[0].value for m in at.chat_message if m.name == "user"]
+        self.assertEqual(said, ["🎤 The heater in my room is not working"])
+        self.assertIn("hall", self.last_reply(at).lower())
+
+    def test_silent_recording_shows_a_mic_warning_and_is_logged(self):
+        """(b) on screen: a silent recording gets a mic warning, and the attempt is in the log"""
+        at = self.record(wav(0.0))
+        self.assertIn("couldn't hear anything", " ".join(w.value for w in at.warning))
+        self.assertEqual(len(at.chat_message), 1, "only the greeting - nothing was sent to the assistant")
+        logged = agent.LOG_FILE.read_text(encoding="utf-8").splitlines()[-1]
+        self.assertIn('"mic_problem": "I couldn\'t hear anything', logged)
 
 
 if __name__ == "__main__":
