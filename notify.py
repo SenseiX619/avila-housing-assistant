@@ -19,8 +19,8 @@ def is_configured() -> bool:
     return bool(config.TICKET_EMAIL_TO and config.SMTP_USER and config.SMTP_APP_PASSWORD)
 
 
-def ticket_email(ticket: dict) -> EmailMessage:
-    """The email staff receive for one ticket."""
+def ticket_email(ticket: dict, update: str = "") -> EmailMessage:
+    """The email staff receive for one ticket (update = what changed, for a follow-up email)."""
     urgency = ticket["urgency"].upper()
     flag = "🚨 EMERGENCY" if urgency == "EMERGENCY" else urgency
     where = f"{ticket['building']}, room {ticket['room']}"
@@ -29,10 +29,12 @@ def ticket_email(ticket: dict) -> EmailMessage:
     days = config.SLA_DAYS.get(ticket["urgency"], 14)
 
     msg = EmailMessage()
-    msg["Subject"] = f"[Avila Housing] {ticket['code']} · {flag} · {ticket['issue']} · {where}"
+    prefix = f"UPDATED ({update}) " if update else ""
+    msg["Subject"] = f"[Avila Housing] {prefix}{ticket['code']} · {flag} · {ticket['issue']} · {where}"
     msg["From"] = f"Avila Housing Assistant <{config.SMTP_USER}>"
     msg["To"] = config.TICKET_EMAIL_TO
-    msg.set_content(f"""New maintenance ticket from the Avila Housing Assistant.
+    intro = f"UPDATE to an existing ticket: {update}." if update else "New maintenance ticket from the Avila Housing Assistant."
+    msg.set_content(f"""{intro}
 
 Ticket:    {ticket['code']}
 Priority:  {flag} - Housing Handbook deadline: {days} days (due {due})
@@ -63,12 +65,12 @@ def _send(msg: EmailMessage, on_done) -> None:
         on_done(result)
 
 
-def send_ticket_email(ticket: dict, on_done=None, background: bool = True) -> bool:
+def send_ticket_email(ticket: dict, on_done=None, background: bool = True, update: str = "") -> bool:
     """Email a new ticket. Returns False (and sends nothing) when email isn't set up in .env.
     on_done(result) is called afterwards with "sent" or "failed: ..." - used for the log."""
     if not is_configured():
         return False
-    msg = ticket_email(ticket)
+    msg = ticket_email(ticket, update)
     if background:
         threading.Thread(target=_send, args=(msg, on_done), daemon=True).start()
     else:

@@ -24,6 +24,7 @@ university is trusting it with students.
 
 import json
 import re
+import time
 from dataclasses import dataclass, field
 
 import config
@@ -392,9 +393,28 @@ class HousingAgent:
             language=language, channel=channel, student_message=draft.get("student_message", ""))
         state["draft"] = None
         state["my_tickets"].append(ticket["code"])
-        # Email it to housing staff (in the background; the result goes to the conversation log).
-        notify.send_ticket_email(ticket, on_done=lambda result: write_log(
-            {"event": "ticket_email", "ticket": ticket["code"], "to": config.TICKET_EMAIL_TO, "result": result}))
+        state["last_ticket"] = {**ticket, "at": time.time()}
+        self._email(ticket)
+        return ticket
+
+    @staticmethod
+    def _email(ticket: dict, update: str = "") -> None:
+        """Email the ticket to housing staff (in the background; the result goes to the conversation log)."""
+        notify.send_ticket_email(ticket, update=update, on_done=lambda result: write_log(
+            {"event": "ticket_email", "ticket": ticket["code"], "update": update or None,
+             "to": config.TICKET_EMAIL_TO, "result": result}))
+
+    def _correct_room(self, draft: dict, state: dict) -> dict | None:
+        """Same problem, same hall, a few minutes later, but a different room? Then the student is correcting
+        the room (speech often mishears numbers): fix the ticket they just made instead of opening a second one."""
+        last = state.get("last_ticket")
+        if not (last and time.time() - last["at"] < 600 and draft["room"] != last["room"]
+                and draft["building"] == last["building"] and draft["issue"].lower() == last["issue"].lower()):
+            return None
+        state["draft"] = None
+        ticket = self.tickets.update_room(last["code"], draft["room"])
+        state["last_ticket"] = {**ticket, "at": time.time()}
+        self._email(ticket, update="Room corrected")
         return ticket
 
     def _handle_maintenance(self, message, details, language, state, channel) -> AgentReply:
@@ -414,6 +434,13 @@ class HousingAgent:
             else:
                 ask = f"And your room number in {draft['building']}?"
             return AgentReply(self._say(ask, language), kind="ask_details", options=options)
+
+        corrected = self._correct_room(draft, state)
+        if corrected:
+            text = (f"Fixed! Ticket {corrected['code']} is now for room {corrected['room']} in "
+                    f"{corrected['building']}, and housing staff have the update.")
+            return AgentReply(self._say(text, language), kind="ticket", ticket=corrected,
+                              options=[MY_TICKET, REPAIR, QUESTION])
 
         ticket = self._create_ticket(draft, language, channel, state)
         window = "2 days" if config.SLA_DAYS.get(ticket["urgency"], 14) <= 2 else "2 weeks"

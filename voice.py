@@ -49,7 +49,7 @@ def loudness(wav_bytes: bytes) -> float:
 
 
 def is_ghost(text: str) -> bool:
-    words = re.findall(r"[a-z']+", text.lower())
+    words = re.findall(r"[a-z0-9']+", text.lower())          # digits count: "322" is a room number
     return not words or all(w in GHOST_WORDS for w in words) or "amara.org" in text.lower()
 
 

@@ -483,3 +483,20 @@ test email "sent"; a repair typed through the secure link became AV-1008 and its
 one second later. `check_setup` shows "[PASS] New tickets are emailed to ...".
 
 **Lesson:** never paste passwords into a chat. An app password shared there was deleted and replaced.
+
+---
+
+## v1.13-room-fixes - Learned from Sensei's real phone test
+
+**What broke (from data/conversation_log.jsonl, Nov 3, 2:58 PM):**
+1. Saying only "322" was rejected as a phantom phrase: the filter only counted letters, so a bare
+   number looked like "no words".
+2. Whisper heard "three twenty-two" as "three to two", so ticket AV-1007 got room "3-2".
+3. Repeating "Villa Ventura, room 322" created a second ticket (AV-1008) and a second email.
+
+**Fix:** digits now count as real words. And if, within 10 minutes, the same problem in the same
+hall comes in with a different room, the student is correcting the room: the ticket they just made
+is updated ("Fixed! Ticket AV-1007 is now for room 322...") and staff get an "UPDATED (Room
+corrected)" email instead of a duplicate. A different problem is still a new ticket.
+
+**Tested:** 50 offline checks (2 new + spoken numbers).

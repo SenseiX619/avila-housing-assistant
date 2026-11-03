@@ -362,6 +362,30 @@ class AgentFlows(unittest.TestCase):
         send.assert_called_once()
         self.assertEqual(send.call_args.args[0]["code"], ticket["code"])
 
+    def test_repeating_the_room_corrects_the_ticket(self):
+        """speech misheard the room ("3-2"); saying it again fixes that ticket - no duplicate, an UPDATED email"""
+        heater = dict(issue="Heater not working", building="Villa Ventura", category="Heating/AC", urgency="urgent")
+        with mock.patch.object(notify, "send_ticket_email") as send:
+            with mock.patch("llm.chat_json", return_value=ai_said("maintenance", room="3-2", **heater)):
+                first = self.say("Villa Ventura, room number three to two", channel="voice").ticket
+            with mock.patch("llm.chat_json", return_value=ai_said("maintenance", room="322", **heater)):
+                fixed = self.say("Villa Ventura, room three twenty-two", channel="voice")
+        self.assertEqual(fixed.ticket["code"], first["code"])
+        self.assertEqual(fixed.ticket["room"], "322")
+        self.assertIn("Fixed!", fixed.text)
+        self.assertEqual(len(self.store.all()), 1, "no duplicate ticket")
+        self.assertEqual(send.call_args.kwargs["update"], "Room corrected")
+
+    def test_a_different_problem_is_a_new_ticket(self):
+        """a new problem in the same hall is a new ticket, not a correction"""
+        with mock.patch("llm.chat_json", return_value=ai_said("maintenance", issue="Heater not working",
+                                                               building="Wylie Hall", room="108")):
+            first = self.say("My heater is broken, Wylie 108").ticket
+        with mock.patch("llm.chat_json", return_value=ai_said("maintenance", issue="Sink leaking",
+                                                               building="Wylie Hall", room="110")):
+            second = self.say("Also the sink in Wylie 110 is leaking").ticket
+        self.assertNotEqual(first["code"], second["code"])
+
     def test_ticket_email_content_and_sending(self):
         """the email says what, where, how urgent and the deadline, and goes to TICKET_EMAIL_TO"""
         ticket = self.store.create("Thompson Hall", "214", "Heater not working", "Heating/AC", "urgent",
@@ -418,7 +442,7 @@ class Voice(unittest.TestCase):
         for ghost in ["", "you", "Thank you.", "Thank you. Thank you.", "¡Gracias!",
                       "Subtítulos realizados por la comunidad de Amara.org"]:
             self.assertTrue(voice.is_ghost(ghost), ghost)
-        for real in ["My heater isn't working", "Thank you so much for fixing my heater"]:
+        for real in ["My heater isn't working", "Thank you so much for fixing my heater", "322", "Room 214."]:
             self.assertFalse(voice.is_ghost(real), real)
 
 

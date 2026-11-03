@@ -73,6 +73,13 @@ class TicketStore:
             db.execute("UPDATE tickets SET status = ?, updated_at = ? WHERE code = ?",
                        (status, datetime.now().isoformat(timespec="seconds"), code))
 
+    def update_room(self, code: str, room: str) -> dict:
+        """Fix the room on a ticket (e.g. speech misheard "322" as "3-2")."""
+        with self._connect() as db:
+            db.execute("UPDATE tickets SET room = ?, updated_at = ? WHERE code = ?",
+                       (room, datetime.now().isoformat(timespec="seconds"), code))
+        return self.get(code)
+
     def load_sample_tickets(self) -> None:
         """Clearly-fake tickets so the staff dashboard has something to show in a demo."""
         now = datetime.now()
