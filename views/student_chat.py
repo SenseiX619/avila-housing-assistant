@@ -95,7 +95,10 @@ if mic_problem := st.session_state.pop("mic_problem", None):
 # ---------- Two doors into the same agent: voice and text ----------
 # The student talks; the assistant always answers in writing.
 st.session_state.setdefault("mic_round", 0)
-recording = st.audio_input("🎤 Tap the mic, talk, then tap stop", key=f"mic_{st.session_state.mic_round}")
+recording = st.audio_input(
+    "🎤 Tap the mic, talk, then tap stop", key=f"mic_{st.session_state.mic_round}",
+    help="First time: click Allow when your browser asks to use the microphone. If it says permission "
+         "denied, click the icon left of the web address, set Microphone to Allow, then reload the page.")
 typed = st.chat_input("...or type your question here")
 
 user_text, channel = None, "text"

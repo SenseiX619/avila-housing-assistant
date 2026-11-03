@@ -347,6 +347,10 @@ class Screens(unittest.TestCase):
         self.assertFalse(at.exception, at.exception)
         return at
 
+    def test_mic_has_a_permission_tip(self):
+        """(b) on screen: the mic's ⓘ tip explains how to allow the microphone"""
+        self.assertIn("set Microphone to Allow", self.chat().audio_input[0].help)
+
     def test_voice_recording_reaches_the_assistant(self):
         """(b) on screen: a recording is transcribed, shown with 🎤, and answered"""
         at = self.record(wav(0.2))
