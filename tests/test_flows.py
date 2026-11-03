@@ -16,6 +16,7 @@ import io
 import logging
 import math
 import os
+import shutil
 import struct
 import sys
 import tempfile
@@ -50,6 +51,10 @@ def setUpModule():
     warnings.filterwarnings("ignore", message="The inplace keyword")
     logging.getLogger("streamlit.runtime.scriptrunner_utils.script_run_context").addFilter(
         lambda record: "missing ScriptRunContext" not in record.getMessage())
+
+
+def tearDownModule():
+    shutil.rmtree(TMP, ignore_errors=True)       # delete the temporary database and log
 
 
 def ai_said(intent, language="English", ticket_id=None, **ticket):
