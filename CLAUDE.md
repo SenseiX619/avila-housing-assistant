@@ -89,6 +89,9 @@ Ask me before anything big or hard to undo.
 - Nov 2 (v1.4-click-first): my first mic test failed with nothing logged. Mic checks fixed, every
   recording now logged (heard / loudness / mic_problem), buttons added for every step.
   This PC has two mics (laptop array + PS5 DualSense headset mic): check the browser's mic choice.
+- Nov 2 retest: nothing reached the app, not even a failed recording. Windows' mic history shows
+  Chrome hasn't opened the mic since June 11, so Chrome is blocking it for localhost:8501
+  (Streamlit then says "Microphone permission denied"). I need to allow it in Chrome's site settings.
 - Waiting on: my retest with the mic and the buttons. Then read data/conversation_log.jsonl.
 - Known, for later tasks: free tier = 8,000 tokens/min, so replies slow to 5-14s after ~10 quick
   messages (task 5). Test ticket AV-1008 is in the real database; the counter isn't reset (task 6).
