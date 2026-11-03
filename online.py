@@ -13,12 +13,12 @@ import shutil
 import socket
 import subprocess
 import sys
+import threading
 import time
 import webbrowser
 from pathlib import Path
 
 ROOT = Path(__file__).parent
-PORT = 8501
 
 
 def find_cloudflared() -> str | None:
@@ -29,9 +29,33 @@ def find_cloudflared() -> str | None:
     return None
 
 
-def app_running() -> bool:
+def port_in_use(port: int) -> bool:
     with socket.socket() as s:
-        return s.connect_ex(("127.0.0.1", PORT)) == 0
+        return s.connect_ex(("127.0.0.1", port)) == 0
+
+
+def free_port() -> int:
+    # Always run OUR OWN copy of the app. Borrowing one started elsewhere (another window, another
+    # program) means the link dies when that copy is closed - which is exactly what happened on Nov 3.
+    return next(p for p in range(8501, 8520) if not port_in_use(p))
+
+
+def start_app(port: int, url: str) -> subprocess.Popen:
+    env = dict(os.environ, APP_URL=url)               # so the QR code points at the link, even on localhost
+    app = subprocess.Popen([sys.executable, "-m", "streamlit", "run", "app.py", "--server.headless", "true",
+                            "--server.port", str(port)], cwd=ROOT, env=env)
+    for _ in range(60):
+        if port_in_use(port):
+            break
+        time.sleep(1)
+    return app
+
+
+def keep_reading(stream) -> None:
+    # cloudflared keeps printing status lines. If nobody reads them, Windows pauses it once enough
+    # pile up - and the link freezes. So read (and ignore) them for as long as it runs.
+    for _ in stream:
+        pass
 
 
 def main() -> None:
@@ -39,8 +63,9 @@ def main() -> None:
     if not cloudflared:
         sys.exit("Cloudflare's tunnel tool is missing. Install it once with:  winget install Cloudflare.cloudflared")
 
+    port = free_port()
     print("Starting the secure link...")
-    tunnel = subprocess.Popen([cloudflared, "tunnel", "--no-autoupdate", "--url", f"http://localhost:{PORT}"],
+    tunnel = subprocess.Popen([cloudflared, "tunnel", "--no-autoupdate", "--url", f"http://localhost:{port}"],
                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     url = None
     for line in tunnel.stdout:                         # cloudflared prints the link among its startup lines
@@ -50,17 +75,10 @@ def main() -> None:
             break
     if not url:
         sys.exit("Couldn't get a link from Cloudflare - check the internet connection and try again.")
+    threading.Thread(target=keep_reading, args=(tunnel.stdout,), daemon=True).start()
 
-    app = None
-    if not app_running():
-        print("Starting the app...")
-        env = dict(os.environ, APP_URL=url)           # so the QR code points at the link, even on localhost
-        app = subprocess.Popen([sys.executable, "-m", "streamlit", "run", "app.py", "--server.headless", "true",
-                                "--server.port", str(PORT)], cwd=ROOT, env=env)
-        for _ in range(60):
-            if app_running():
-                break
-            time.sleep(1)
+    print("Starting the app...")
+    app = start_app(port, url)
 
     print("\n" + "=" * 70)
     print(f"  ONLINE LINK (phones):  {url}")
@@ -70,13 +88,19 @@ def main() -> None:
     time.sleep(3)                                      # give Cloudflare a moment before the first visit
     webbrowser.open(f"{url}/staff_dashboard")
     try:
-        tunnel.wait()
+        while True:                                    # watch both; restart the app if it ever stops
+            if tunnel.poll() is not None:
+                print("\n!! The secure link stopped. Close this window and double-click run_online.bat again.")
+                break
+            if app.poll() is not None:
+                print("\n!! The app stopped - restarting it (same link)...")
+                app = start_app(port, url)
+            time.sleep(2)
     except KeyboardInterrupt:
         pass
     finally:
         tunnel.terminate()
-        if app:
-            app.terminate()
+        app.terminate()
 
 
 if __name__ == "__main__":

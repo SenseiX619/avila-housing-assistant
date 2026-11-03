@@ -500,3 +500,22 @@ is updated ("Fixed! Ticket AV-1007 is now for room 322...") and staff get an "UP
 corrected)" email instead of a duplicate. A different problem is still a new ticket.
 
 **Tested:** 50 offline checks (2 new + spoken numbers).
+
+---
+
+## v1.14-sturdy-link - The phone link no longer dies on its own
+
+**What broke (Nov 3, afternoon):** the phone link stopped working a while after starting. Two causes:
+1. `run_online.bat` found an app already running (one Claude had started in its own terminal) and
+   only made a link to it. When that other copy closed, the link pointed at nothing.
+2. A sleeper bug: after printing the link, `online.py` stopped reading cloudflared's status
+   messages. Once enough pile up, Windows pauses cloudflared until someone reads them, and the
+   link freezes.
+
+**Fix (`online.py`):** it always starts **its own** app (on the next free port if 8501 is taken),
+keeps reading cloudflared's messages in the background, and watches the app: if it ever stops,
+it's restarted on the same link within seconds. Start it by double-clicking `run_online.bat`, in
+its own window, not inside another program's terminal.
+
+**Tested:** killed the app on purpose: back on the same link in 3 seconds. Link checked: the
+dashboard and QR code load, and the connection opens in about 0.2 s.

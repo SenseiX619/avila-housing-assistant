@@ -163,6 +163,7 @@ Every step is a Git tag. Read `BUILD_LOG.md` alongside:
 | `v1.11-laptop-link` | run_online.bat: secure link from this laptop for phones (Cloud copy froze) |
 | `v1.12-ticket-emails` | Every new ticket is emailed to housing staff (settings in .env) |
 | `v1.13-room-fixes` | Spoken room numbers accepted; repeating the room corrects the ticket |
+| `v1.14-sturdy-link` | run_online.bat runs its own app, restarts it if it stops, link never freezes |
 
 ```
 git checkout v0.3-qa-chat          # see the app as it was at that step
