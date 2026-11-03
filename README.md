@@ -140,6 +140,7 @@ Every step is a Git tag. Read `BUILD_LOG.md` alongside:
 | `v1.4-click-first` | Buttons for every step, call buttons, shorter replies, mic fixes and logging |
 | `v1.5-printed-pages` | Citations use the page numbers printed in the handbook |
 | `v1.6-safe-json` | Retry broken AI answers, rule-based fallback, errors logged not shown |
+| `v1.7-fast-failover` | Instant switch to a backup model when one runs out of free tokens |
 
 ```
 git checkout v0.3-qa-chat          # see the app as it was at that step

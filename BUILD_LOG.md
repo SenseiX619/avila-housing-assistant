@@ -356,3 +356,28 @@ technical text on the projector. If Groq was down, nothing worked at all, not ev
 becomes a ticket) and the AI being unreachable (smoke still gets the safety message and an
 emergency ticket). With the real AI: all five flows again, 0 JSON problems; none in any real run
 today (about 40 ANALYZE calls).
+
+---
+
+## v1.7-fast-failover - Replies stay under ~1 second, even in a fast demo
+
+**What broke:** after about 10 quick messages, replies slowed from 0.5 seconds to 5-14 seconds.
+
+**Why:** Groq's free tier gives **each model** 8,000 tokens per minute (one handbook answer uses
+about 1,900). When the main model ran out, the Groq library quietly **waited and retried** it, up
+to 2 times, before our code ever tried the backup model. The backup models each have their own
+8,000 tokens, sitting unused.
+
+**Fix (`llm.py`):**
+- `max_retries=0`: a model that's out of tokens fails in a split second, and `chat()` moves straight
+  on to the next model.
+- That model then "rests" until Groq says it's ready again, so the next messages skip it instead
+  of hitting the limit again.
+- A stuck call gives up after 15 seconds instead of 60.
+- Together that's about 3x the capacity (three models x 8,000 tokens a minute), still free.
+- Tapped buttons (v1.4) use no tokens at all, which helps too.
+- `check_setup.py` no longer calls the old text-to-speech service on every start (3 s total now).
+
+**Tested:** 40 offline checks, including a fake "out of tokens" model. Real burst test: 10
+handbook questions back-to-back. The main model ran out at question 6, and the switch took
+0.06 seconds. **Every reply took 0.7-1.1 seconds.** Before this fix the same situation took 5-14 s.
