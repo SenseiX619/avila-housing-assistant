@@ -96,6 +96,19 @@ class AgentFlows(unittest.TestCase):
         self.assertIn("(Handbook p.", reply.text)
         self.assertTrue(reply.sources, "the answer should list its handbook pages")
 
+    def test_a_citations_use_the_printed_page_number(self):
+        """(a) the Lockouts section is printed as p. 14 (PDF page 15): we cite 14, what students see"""
+        lockouts = [c for c in self.agent.retriever.chunks if "LOCKOUTS" in c["text"]]
+        self.assertTrue(lockouts, "Handbook not loaded - run: python ingest.py")
+        self.assertEqual((lockouts[0]["page"], lockouts[0]["pdf_page"]), (14, 15))
+
+    def test_a_sources_list_only_the_pages_the_answer_cites(self):
+        """(a) the 'Sources' line shows the pages the answer cites, not every page we searched"""
+        with mock.patch("llm.chat_json", return_value=ai_said("question")), \
+             mock.patch("llm.chat", return_value="A lockout costs $25 after the third time (Handbook p. 14)."):
+            reply = self.say("I got locked out of my room. Is there a fee?")
+        self.assertEqual(reply.sources, [14])
+
     def test_b_voice_repair_asks_for_details_then_creates_ticket(self):
         """(b) mic: 'My heater isn't working' -> asks hall + room -> ticket saved as Voice"""
         first = self.say("My heater isn't working", channel="voice")

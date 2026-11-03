@@ -423,7 +423,9 @@ class HousingAgent:
         messages.append({"role": "user",
                          "content": f"STUDENT QUESTION: {message}\n\nHANDBOOK EXCERPTS:\n{excerpts}"})
         text = llm.chat(messages, temperature=0.2)
-        sources = sorted({h["page"] for h in hits})
+        # List the pages the answer actually cites; if it cites none, every page we gave it.
+        cited = {int(p) for p in re.findall(r"p\.\s?(\d+)", text)} & {h["page"] for h in hits}
+        sources = sorted(cited or {h["page"] for h in hits})
         return AgentReply(text, kind="answer", sources=sources, options=[QUESTION, REPAIR, MY_TICKET])
 
     # ---------- helpers ----------

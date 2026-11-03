@@ -29,7 +29,11 @@ there here also any all each per its me am""".split())
 
 
 def pdf_to_chunks(pdf_path: Path, source_name: str) -> list[dict]:
-    """Read a PDF and split it into chunks that remember their page number (for citations)."""
+    """Read a PDF and split it into chunks that remember their page number (for citations).
+
+    "page" is the number PRINTED on the page (what a student sees), read from the page's first line.
+    In the 2026-27 handbook it is one less than the PDF page number (the cover has no number).
+    Pages without a printed number keep the PDF page number. "pdf_page" is always the PDF's own count."""
     reader = PdfReader(str(pdf_path))
     chunks = []
     for page_index, page in enumerate(reader.pages):
@@ -37,13 +41,18 @@ def pdf_to_chunks(pdf_path: Path, source_name: str) -> list[dict]:
         text = re.sub(r"\.{4,}", " ", text)        # remove "......" leaders from the table of contents
         text = re.sub(r"[ \t]+", " ", text)
         text = re.sub(r"\n\s*\n+", "\n", text).strip()
+        printed = re.match(r"(\d{1,3})\s*\n", text)   # the printed page number sits on the first line
+        if printed:
+            text = text[printed.end():]
         if len(text) < 40:                          # skip empty / cover pages
             continue
+        page_number = int(printed.group(1)) if printed else page_index + 1
         start = 0
         while start < len(text):
             piece = text[start:start + CHUNK_SIZE].strip()
             if piece:
-                chunks.append({"source": source_name, "page": page_index + 1, "text": piece})
+                chunks.append({"source": source_name, "page": page_number, "pdf_page": page_index + 1,
+                               "text": piece})
             start += CHUNK_SIZE - CHUNK_OVERLAP
     return chunks
 
