@@ -403,3 +403,21 @@ handbook questions back-to-back. The main model ran out at question 6, and the s
 
 **Tested:** 41 offline checks (reset -> AV-1001..AV-1006, next ticket AV-1007). Looked at the
 dashboard at 1280x720 in a practice copy with its own database: reset worked, all columns fit.
+
+---
+
+## v1.9-cloud-ready - Ready for a free online copy (not deployed)
+
+**What:**
+- `requirements.txt` pins the exact library versions we tested, so a new release can't break the
+  demo (or a teammate's fresh `setup.bat`) the night before.
+- Removed the text-to-speech code and `edge-tts`, unused since v1.2.
+- The repair safety net understands phone keyboards' curly apostrophe ("isn’t").
+- `data/knowledge.json` (public handbook text) is committed, so a cloud copy needs no PDF.
+- README has step-by-step Streamlit Community Cloud instructions (private repo, key in Secrets,
+  app shared privately with teammates).
+
+**Checked:** the Groq key has never been in the code or git history. 42 offline checks pass.
+
+**Not done (Sensei's call):** the deploy itself was skipped for now. The README steps take about
+10 minutes when needed.

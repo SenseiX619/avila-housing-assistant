@@ -149,6 +149,7 @@ Every step is a Git tag. Read `BUILD_LOG.md` alongside:
 | `v1.6-safe-json` | Retry broken AI answers, rule-based fallback, errors logged not shown |
 | `v1.7-fast-failover` | Instant switch to a backup model when one runs out of free tokens |
 | `v1.8-demo-ready` | Reset demo button, projector settings (light theme, no developer buttons), tidier table |
+| `v1.9-cloud-ready` | Pinned versions, handbook index included, ready for a free cloud copy |
 
 ```
 git checkout v0.3-qa-chat          # see the app as it was at that step

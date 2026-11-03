@@ -78,7 +78,7 @@ Ask me before anything big or hard to undo.
 5. DONE (v1.7-fast-failover): speed. Cause was waiting on a rate-limited model; now instant switch to the backup. 0.7-1.1 s per reply in a 10-question burst.
 6. DONE (v1.8-demo-ready): Demo polish: a "Reset demo" button on the dashboard (clear tickets + load sample tickets),
    and make sure the dashboard looks clean on a projector.
-7. Optional, only if 1-6 are solid: deploy free to Streamlit Community Cloud (key in Secrets,
+7. PREPARED, NOT DEPLOYED (v1.9-cloud-ready, my call Nov 3): Optional, only if 1-6 are solid: deploy free to Streamlit Community Cloud (key in Secrets,
    never in the repo) so teammates can open it on their phones.
 
 ## Current status
