@@ -28,12 +28,13 @@ st.markdown("""<div class="avila-banner">
 
 
 @st.cache_resource
-def load_agent() -> HousingAgent:
-    # cache_resource = load the handbook index once, not on every click
+def load_agent(code_version: float) -> HousingAgent:
+    # cache_resource = load the handbook index once, not on every click. code_version is when the newest
+    # .py file was saved, so after a code change the next message uses the new code - no restart needed.
     return HousingAgent(Retriever(config.KNOWLEDGE_FILE), TicketStore())
 
 
-agent = load_agent()
+agent = load_agent(max(path.stat().st_mtime for path in config.ROOT.glob("*.py")))
 if not agent.retriever.ready:
     st.warning("The handbook isn't loaded yet. In the terminal run:  python ingest.py")
 
