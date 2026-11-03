@@ -297,4 +297,8 @@ standing an alarm down, make two independent signals agree.
 - Emergencies show Call 911 / Call Campus Safety buttons, which dial on a phone.
 - Shorter replies everywhere. Handbook answers are 1-3 sentences.
 
+**Tested:** 30 offline checks, including a full tap-through with zero AI calls and a recorded clip
+on the real chat page. All five flows again with the real AI and Whisper: every reply in about
+1.2 seconds or less. On the already-running app, the four-tap repair made ticket AV-1008 instantly.
+
 **Lesson:** log failures, not just successes. The worst bug is the one that leaves no trace.
