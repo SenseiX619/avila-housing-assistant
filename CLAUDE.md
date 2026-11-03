@@ -42,6 +42,7 @@ speech-to-text: whisper-large-v3-turbo), SQLite, rank_bm25 keyword search, pypdf
 - fake_llm.py: offline stand-in AI for tests (set FAKE_LLM=1)
 - tests/test_flows.py, test.bat: offline tests for the demo flows (temporary database and log, never the real ones)
 - online.py, run_online.bat: secure https link (Cloudflare quick tunnel) so phones can use the app and their mic
+- notify.py: emails every new ticket to TICKET_EMAIL_TO (Gmail app password in .env); "python notify.py" sends a test
 - check_setup.py, setup.bat, run.bat: Windows setup and pre-flight check
 - BUILD_LOG.md: what we built, why, and what broke, per version
 - data/conversation_log.jsonl: every turn (what was heard, what the AI understood, what we did). READ THIS FIRST when debugging.

@@ -161,6 +161,7 @@ Every step is a Git tag. Read `BUILD_LOG.md` alongside:
 | `v1.9-cloud-ready` | Pinned versions, handbook index included, ready for a free cloud copy |
 | `v1.10-phone-qr` | QR code to open the app on phones (works once the app is online) |
 | `v1.11-laptop-link` | run_online.bat: secure link from this laptop for phones (Cloud copy froze) |
+| `v1.12-ticket-emails` | Every new ticket is emailed to housing staff (settings in .env) |
 
 ```
 git checkout v0.3-qa-chat          # see the app as it was at that step

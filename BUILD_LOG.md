@@ -460,3 +460,26 @@ shown on the projector. Checked: connection opens in about 0.2 s through the lin
 
 **Trade-offs:** works only while the laptop is on and that window is open; the link changes on
 each start (the QR code updates by itself). The Cloud copy stays as a backup.
+
+---
+
+## v1.12-ticket-emails - Tickets reach a real person
+
+**Why:** saving a ticket on the laptop isn't enough; someone has to hear about it.
+
+**What:** `notify.py` emails every new ticket (number, priority, handbook deadline, where, the
+student's own words, voice/text, language) in the background, so the student never waits. A failed
+email never breaks the chat; each attempt is logged (`"event": "ticket_email"`, sent/failed).
+Sample tickets are never emailed.
+
+**Settings (only in `.env` / Streamlit Secrets, never in the code):** `TICKET_EMAIL_TO` (who gets
+them: for now Sensei's own Avila inbox, HOUSING@avila.edu after approval), `SMTP_USER` +
+`SMTP_APP_PASSWORD` (a Gmail account and a Gmail app password, which only sends mail and can be
+deleted anytime). Avila's Outlook isn't used to *send* because Microsoft blocks simple app logins
+and it would put a university password in the app.
+
+**Tested:** 4 faked email tests (tests switch email off, so they never send). Real: `python notify.py`
+test email "sent"; a repair typed through the secure link became AV-1008 and its email was "sent"
+one second later. `check_setup` shows "[PASS] New tickets are emailed to ...".
+
+**Lesson:** never paste passwords into a chat. An app password shared there was deleted and replaced.
