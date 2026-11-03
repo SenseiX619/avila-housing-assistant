@@ -443,3 +443,20 @@ hung on a loading circle; "Reboot app" fixed it. Checked live: a handbook questi
 "(Handbook p. 14)", and the dashboard shows the QR code. Online tickets are separate from the
 laptop's and reset when the app restarts or wakes from sleep, so press Reset demo on the online
 dashboard before presenting.
+
+---
+
+## v1.11-laptop-link - A secure link from the laptop, for phones
+
+**What broke:** the Streamlit Cloud copy froze for every visitor a few minutes after each start:
+the page's live connection (websocket) stayed on "connecting" while the server answered normal
+requests in 0.1 s. The same code on the laptop, even with Cloud-like settings, connected in 6 ms.
+So it's Streamlit's hosting, not our code, and we couldn't see their logs.
+
+**Fix:** `run_online.bat` -> `online.py` starts the app on this laptop and opens a free Cloudflare
+"quick tunnel" (no account) that gives it an https link. Phones scan the QR code (which points to
+the link) and can use their own microphone. Bonus: phone tickets land on the same laptop dashboard
+shown on the projector. Checked: connection opens in about 0.2 s through the link.
+
+**Trade-offs:** works only while the laptop is on and that window is open; the link changes on
+each start (the QR code updates by itself). The Cloud copy stays as a backup.

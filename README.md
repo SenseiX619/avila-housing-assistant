@@ -74,6 +74,15 @@ save the PDF into `data/docs/`, and run `python ingest.py` again.
 
 ---
 
+## Phones on demo day (secure link from this laptop)
+
+Phones need an https link to use their microphone. Double-click **`run_online.bat`**: it checks
+the setup, starts the app, gives it a free Cloudflare link (like `https://some-words.trycloudflare.com`,
+no account needed) and opens the Staff Dashboard through it. The **QR code** in the dashboard's
+sidebar points to that link, so the audience can scan it, and their tickets appear live on this
+laptop's dashboard. Keep that window open; the link changes every time it starts.
+(One-time install: `winget install Cloudflare.cloudflared`.)
+
 ## Demo script (Nov 4)
 
 Open the **Student Assistant** on one screen and the **Staff Dashboard** on the other
@@ -151,6 +160,7 @@ Every step is a Git tag. Read `BUILD_LOG.md` alongside:
 | `v1.8-demo-ready` | Reset demo button, projector settings (light theme, no developer buttons), tidier table |
 | `v1.9-cloud-ready` | Pinned versions, handbook index included, ready for a free cloud copy |
 | `v1.10-phone-qr` | QR code to open the app on phones (works once the app is online) |
+| `v1.11-laptop-link` | run_online.bat: secure link from this laptop for phones (Cloud copy froze) |
 
 ```
 git checkout v0.3-qa-chat          # see the app as it was at that step

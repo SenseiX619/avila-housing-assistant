@@ -72,7 +72,7 @@ def live_board() -> None:
     c4.metric("✅ Resolved", len(tickets) - len(open_tickets))
 
     if not tickets:
-        st.info("No tickets yet. Report a repair in the chat (or click 'Load sample tickets').")
+        st.info("No tickets yet. Report a repair in the chat, or click 🔄 Reset demo in the sidebar for sample tickets.")
         return
 
     buildings = st.multiselect("Filter by building", config.BUILDINGS, key="bfilter")

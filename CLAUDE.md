@@ -41,6 +41,7 @@ speech-to-text: whisper-large-v3-turbo), SQLite, rank_bm25 keyword search, pypdf
 - config.py: every setting (buildings, phone numbers, models, deadlines)
 - fake_llm.py: offline stand-in AI for tests (set FAKE_LLM=1)
 - tests/test_flows.py, test.bat: offline tests for the demo flows (temporary database and log, never the real ones)
+- online.py, run_online.bat: secure https link (Cloudflare quick tunnel) so phones can use the app and their mic
 - check_setup.py, setup.bat, run.bat: Windows setup and pre-flight check
 - BUILD_LOG.md: what we built, why, and what broke, per version
 - data/conversation_log.jsonl: every turn (what was heard, what the AI understood, what we did). READ THIS FIRST when debugging.
@@ -78,7 +79,7 @@ Ask me before anything big or hard to undo.
 5. DONE (v1.7-fast-failover): speed. Cause was waiting on a rate-limited model; now instant switch to the backup. 0.7-1.1 s per reply in a 10-question burst.
 6. DONE (v1.8-demo-ready): Demo polish: a "Reset demo" button on the dashboard (clear tickets + load sample tickets),
    and make sure the dashboard looks clean on a projector.
-7. DONE Nov 3: LIVE at https://avila-housing.streamlit.app (public repo github.com/SenseiX619/avila-housing-assistant, key in Streamlit Secrets). Optional, only if 1-6 are solid: deploy free to Streamlit Community Cloud (key in Secrets,
+7. DONE Nov 3 (Cloud copy freezes after a few minutes - use run_online.bat instead): LIVE at https://avila-housing.streamlit.app (public repo github.com/SenseiX619/avila-housing-assistant, key in Streamlit Secrets). Optional, only if 1-6 are solid: deploy free to Streamlit Community Cloud (key in Secrets,
    never in the repo) so teammates can open it on their phones.
 
 ## Current status
