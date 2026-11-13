@@ -20,6 +20,10 @@ not to rebuild it. I'm learning, so explain every change in plain English.
   there are flames or someone is hurt. Fire alarm sounding -> leave the building first. Both numbers
   are always shown. Rules questions ("Can I smoke in my room?") and a beeping smoke detector get a
   one-line safety reminder and a normal reply (the detector becomes an urgent repair), not an emergency.
+- Can't-wait repairs (CANT_WAIT in agent.py: no heat, a door that won't lock, an overflow) become EMERGENCY
+  repairs with "contact the RA on duty or Campus Safety" (handbook p. 19). An emergency is saved and emailed
+  at once, even before we know the room; the room is added to that same ticket later.
+- Lockouts: who can let them in first (housing staff / your RA / RA on duty, handbook p. 14), then any fee answer.
 - Checks ticket status ("what's happening with AV-1003?").
 - Replies in the student's language (Spanish, Urdu, etc.); tickets are saved in English for staff.
 - Staff Dashboard (second page) auto-refreshes every 5s. It flags overdue tickets using the

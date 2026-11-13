@@ -33,6 +33,9 @@ def ticket_email(ticket: dict, update: str = "") -> EmailMessage:
     msg["Subject"] = f"[Avila Housing] {prefix}{ticket['code']} · {flag} · {ticket['issue']} · {where}"
     msg["From"] = f"Avila Housing Assistant <{config.SMTP_USER}>"
     msg["To"] = config.TICKET_EMAIL_TO
+    if ticket["urgency"] == "emergency":            # shows as "High importance" in Outlook and Gmail
+        msg["X-Priority"] = "1"
+        msg["Importance"] = "High"
     intro = f"UPDATE to an existing ticket: {update}." if update else "New maintenance ticket from the Avila Housing Assistant."
     msg.set_content(f"""{intro}
 

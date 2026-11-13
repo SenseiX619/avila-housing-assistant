@@ -573,3 +573,41 @@ alone, unknown hall, emergency with a room alone, sample tickets all real). With
 Wylie Hall 1450; "the Villas room 250" -> Villa Ventura 250; "Wylie 99" in Spanish -> asked again in Spanish.
 
 **After pulling this: press Reset demo on the dashboard once**, so the sample tickets use the new rooms.
+
+---
+
+## v1.17-no-waiting - Emergencies are never queued
+
+**What broke (found in the Nov 13 audit):**
+1. The backup danger-word list (it catches what the AI misses, and takes over when the AI is down) didn't
+   know "it smells **like** gas", "gas leak" or "water coming through the ceiling". With the AI down,
+   "It smells like gas" only got "Sorry, I'm having trouble right now".
+2. "Smoke in the hallway!" with no room saved **nothing**. If the student never answered "which room?",
+   staff never heard about it.
+3. **No heat** waited in the normal 2-day queue (Sensei: no heat is an emergency). So did a door that
+   won't lock and an overflowing sink, which the handbook (printed p. 19) calls "severe".
+4. **"I'm locked out"** was answered as a fee question. Nothing told the student who could let them in.
+
+**Fix:**
+- **Danger words:** "smells like gas", "gas leak", "leaking gas" (911 first), "water coming through the
+  ceiling", "ceiling is leaking" (Campus Safety first).
+- **Alert first, ask later:** an emergency is saved and emailed to staff at once, as "Location unknown"
+  if needed. When the student says where, the place is added to that **same** ticket, and staff get a
+  "Location added" email. Only one alert per conversation.
+- **Can't-wait repairs** (`CANT_WAIT`: no heat, a door or lock that won't lock, an overflow) become
+  **EMERGENCY repairs**: red on the dashboard, high-priority email, and the student reads "In the evening
+  or on a weekend, also contact the RA on duty or Campus Safety now (Housing Handbook p. 19)", with a
+  call button. The "🔥 Heat / AC" button is now two buttons: **🔥 No heat** (emergency) and **❄️ AC** (urgent).
+- **Lockouts:** "Locked out right now? Housing staff help with lockouts (p. 14): contact your RA, or the
+  RA on duty in the evening or on a weekend", with a Campus Safety call button. A fee question still
+  gets its handbook answer underneath. This works even when the AI is down.
+- **Emergency emails are high priority** ("Importance: High" in Gmail and Outlook).
+
+**Not invented:** the handbook says housing staff help with lockouts (p. 14) but gives no lockout phone
+number, so the reply names the RA and the RA on duty (the people p. 19 names for after-hours problems).
+**Ask Avila Housing who students should contact for a lockout**, and we'll put that in.
+
+**Tested:** 71 offline checks (9 new). With the real AI (temporary database, no emails): heater -> EMERGENCY
+repair; "It smells like gas" -> 911 first + ticket AV-x "Location unknown", then "Wylie 1450" was added to that
+ticket; ceiling leak -> Campus Safety first; "door won't lock" -> EMERGENCY repair; lockout -> who to contact,
+then the fee answer. "Can I smoke in my room?" and the beeping smoke detector still get no false alarm.

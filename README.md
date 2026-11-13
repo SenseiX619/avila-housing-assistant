@@ -91,7 +91,8 @@ The dashboard asks for the staff password (`STAFF_PASSWORD` in `.env`): type it 
 
 1. **Question:** "Can my friend stay over this weekend?" -> answer + handbook page.
 2. **Voice repair:** tap the mic, say *"The heater in my room isn't working,"* tap stop.
-   The agent asks where: tap the hall button, then say or type the room. It creates a ticket.
+   The agent asks where: tap the hall button, then say or type the room. No heat can't wait, so it's an
+   **EMERGENCY repair**: red on the dashboard, and the student is told to contact the RA on duty after hours.
    **Switch screens: the ticket is already on the dashboard.**
 3. **Tap-only repair:** 🔧 Report a repair -> 💧 Leak / plumbing -> Wylie Hall -> type 1408.
    No sentences to type, no waiting for the AI.
@@ -167,6 +168,7 @@ Every step is a Git tag. Read `BUILD_LOG.md` alongside:
 | `v1.14-sturdy-link` | run_online.bat runs its own app, restarts it if it stops, link never freezes |
 | `v1.15-staff-lock` | Staff Dashboard needs a password, so the audience can't reset the tickets |
 | `v1.16-room-ranges` | Rooms must match their hall (Thompson 1100-1300, Wylie 1400-1600, Buchanan 400-600, Villa Ventura 200-300) |
+| `v1.17-no-waiting` | Gas, ceiling leaks, no heat, doors that won't lock, lockouts: escalated, never queued |
 
 ```
 git checkout v0.3-qa-chat          # see the app as it was at that step

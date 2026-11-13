@@ -107,8 +107,11 @@ GREETING = "Hi! I'm the Avila Housing Assistant. Tap a button, type, or use the 
 
 # Safety net: if the AI ever misses an emergency, these words still trigger the safety message.
 EMERGENCY_PATTERN = re.compile(
-    r"\b(fire|flames?|smoke|smoking outlet|gas smell|smell(s|ing)? (of )?gas|carbon monoxide|co alarm|flood(ing|ed)?|"
-    r"water (is )?(pouring|everywhere|gushing)|sparks?|sparking|burning smell|unconscious|bleeding|someone (is )?hurt)\b",
+    r"\b(fire|flames?|smoke|smoking outlet|gas smell|gas leak(ing|s)?|leak(ing|s)? gas|smell(s|ing)? (of |like )?gas|"
+    r"carbon monoxide|"
+    r"co alarm|flood(ing|ed)?|water (is )?(pouring|everywhere|gushing)|water\b.{0,25}\b(through|from|out of) (the |my )?ceiling|"
+    r"ceiling (is )?(leaking|caving in|collapsing|falling)|sparks?|sparking|burning smell|unconscious|bleeding|"
+    r"someone (is )?hurt)\b",
     re.I)
 
 # Who to call first. Housing Handbook, Safety & Emergency Policies (printed p. 23): "In Case of Emergency,
@@ -118,7 +121,9 @@ EMERGENCY_PATTERN = re.compile(
 CALL_911_PATTERN = re.compile(
     r"\b(on fire|fire (in|on|at|is|has|started|spreading)|(a|the) fire(?! (alarm|drill|extinguisher|door|hazard|safety|pit))|"
     r"flames?|burning down|unconscious|unresponsive|not breathing|can'?t breathe|collapsed|overdos(e|ed|ing)|seizure|"
-    r"bleeding|someone (is |got )?(hurt|injured)|gas (smell|leak)|smell(s|ing)? (of )?gas|carbon monoxide|co alarm)\b",
+    r"bleeding|someone (is |got )?(hurt|injured)|gas (smell|leak(ing|s)?)|leak(ing|s)? gas|smell(s|ing)? (of |like )?gas|"
+    r"carbon monoxide|"
+    r"co alarm)\b",
     re.I)
 
 # A fire alarm sounding means leave first (handbook, Fire Drills: "all residents must evacuate the buildings").
@@ -134,6 +139,27 @@ NOT_AN_EMERGENCY = re.compile(
 SAFETY_REMINDER = (f"If something is smoking, beeping or unsafe right now, call Campus Safety at "
                    f"{config.CAMPUS_SAFETY_PHONE}, or 911 if you see fire or someone is hurt.")
 
+# Repairs that can't wait in a queue: no heat (Sensei's call, Nov 11) and the handbook's "severe" examples
+# (printed p. 19: "a door cannot be locked, an overflowing sink"). They become EMERGENCY repairs: top of the
+# staff board, emailed as high priority, and the student is told who to contact right now.
+CANT_WAIT = re.compile(
+    r"\b(no heat(ing)?|heat(ing)? (is )?(out|off|broken|not working|isn['’]?t working|stopped working)|"
+    r"heater\b.{0,25}\b(broken|out|dead|stopped|not|isn['’]?t|won['’]?t|doesn['’]?t)|"
+    r"(door|lock)\b.{0,25}\b(won['’]?t|can['’]?t|cannot|doesn['’]?t|does not|will not) (lock|close|latch)|"
+    r"(lock|door lock) (is )?broken|overflow(ing|ed|s)?)\b", re.I)
+CANT_WAIT_HELP = (f"In the evening or on a weekend, also contact the RA on duty or Campus Safety at "
+                  f"{config.CAMPUS_SAFETY_PHONE} now (Housing Handbook p. 19).")
+
+# Locked out right now: point to the people who can let them in. The handbook (printed p. 14) says housing staff
+# give lockout assistance, but names no number, so we name the RA, as p. 19 does for after-hours problems.
+LOCKOUT_PATTERN = re.compile(
+    r"\b(locked out|lock(ed)? (myself|me) out|lost my (room )?(keys?|key ?card|card)|"
+    r"can['’]?t get (in|into) my room)\b", re.I)
+LOCKOUT_HELP = (f"Locked out right now? Housing staff help with lockouts (Housing Handbook p. 14): contact your RA, "
+                f"or the RA on duty in the evening or on a weekend. If you feel unsafe, call Campus Safety at "
+                f"{config.CAMPUS_SAFETY_PHONE}.")
+NO_LOCATION = "Location unknown"               # building on an emergency ticket made before we know where
+
 
 REPAIR_PATTERN = re.compile(
     r"\b(broken|broke|not working|isn['’]?t working|doesn['’]?t work|won['’]?t (turn on|work|lock|close|open|flush|drain)|"
@@ -148,7 +174,8 @@ REPAIR, QUESTION, MY_TICKET, EMERGENCY = "🔧 Report a repair", "❓ Ask a ques
 MAIN_MENU = [REPAIR, QUESTION, MY_TICKET, EMERGENCY]
 # Button -> (category, issue saved on the ticket, urgency). Urgency follows the ANALYZE_PROMPT rules.
 ISSUE_BUTTONS = {
-    "🔥 Heat / AC": ("Heating/AC", "Heating or AC not working", "urgent"),
+    "🔥 No heat": ("Heating/AC", "No heat", "emergency"),               # can't wait (see CANT_WAIT)
+    "❄️ AC": ("Heating/AC", "AC not working", "urgent"),
     "💧 Leak / plumbing": ("Plumbing", "Leak or plumbing problem", "urgent"),
     "🚪 Door / lock": ("Door/Lock", "Door or lock problem", "urgent"),
     "⚡ Electrical": ("Electrical", "Electrical problem", "normal"),
@@ -371,6 +398,10 @@ class HousingAgent:
         # Long messages are never just "hi" - answer them from the handbook instead.
         if intent == "smalltalk" and len(message.split()) > 6:
             intent = "question"
+        # Locked out: not a repair. Who can let them in comes first (LOCKOUT_HELP), then any handbook answer (fees).
+        lockout = bool(LOCKOUT_PATTERN.search(message)) and not REPAIR_PATTERN.search(message)
+        if lockout and intent in ("smalltalk", "maintenance") and not state.get("draft"):
+            intent = "question"
 
         # Safety net #1: danger words (in the message, or in the AI's English summary of it).
         # The AI alone can't talk them down. Only when the AI AND the wording both say nothing is
@@ -383,6 +414,9 @@ class HousingAgent:
             danger = False
             if details.get("urgency") in (None, "", "null", "normal"):
                 details = dict(details, urgency="urgent")          # e.g. a beeping smoke detector: 2-day fix
+        # Repairs that can't wait (no heat, a door that won't lock, an overflow): an EMERGENCY repair, not the queue.
+        if not danger and CANT_WAIT.search(words) and (intent == "maintenance" or state.get("draft")):
+            details = dict(details, urgency="emergency")
 
         if analysis.get("cancel") and state.get("draft"):
             state["draft"] = None
@@ -399,9 +433,17 @@ class HousingAgent:
             text = GREETING if len(state["history"]) < 2 else SHORT_HELLO
             reply = AgentReply(self._say(text, language), kind="smalltalk", options=MAIN_MENU)
         else:
-            reply = self._answer_question(message, analysis.get("search_query") or message, language, state)
+            try:
+                reply = self._answer_question(message, analysis.get("search_query") or message, language, state)
+            except Exception:
+                if not lockout:
+                    raise
+                reply = AgentReply("", kind="answer", options=MAIN_MENU)   # AI down: the lockout help still shows
         if reminder:
             reply.text = f"{self._say(SAFETY_REMINDER, language)}\n\n{reply.text}"
+        if lockout and reply.kind != "emergency":
+            reply.text = f"{self._say(LOCKOUT_HELP, language)}\n\n{reply.text}".strip()
+            reply.calls = reply.calls or [CALL_SAFETY]
         return reply
 
     def _merge_draft(self, details: dict, state: dict, message: str) -> dict:
@@ -432,6 +474,29 @@ class HousingAgent:
         notify.send_ticket_email(ticket, update=update, on_done=lambda result: write_log(
             {"event": "ticket_email", "ticket": ticket["code"], "update": update or None,
              "to": config.TICKET_EMAIL_TO, "result": result}))
+
+    def _alert_without_location(self, draft: dict, language: str, channel: str, state: dict) -> dict:
+        """An emergency, but no building or room yet: save and email the ticket NOW with what we know, so staff
+        hear about it even if the student never answers. One alert per conversation; the place is added later."""
+        if state.get("emergency_ticket"):
+            return self.tickets.get(state["emergency_ticket"])
+        ticket = self.tickets.create(
+            building=draft.get("building") or NO_LOCATION, room=draft.get("room") or "?", issue=draft["issue"],
+            category=draft.get("category") or "Other", urgency="emergency", language=language, channel=channel,
+            student_message=draft.get("student_message", ""))
+        state["emergency_ticket"] = ticket["code"]
+        state["my_tickets"].append(ticket["code"])
+        self._email(ticket)
+        return ticket
+
+    def _add_location(self, draft: dict, state: dict) -> dict:
+        """The student told us where the emergency is: put it on the ticket staff already have."""
+        code = state.pop("emergency_ticket")
+        state["draft"] = None
+        ticket = self.tickets.update_location(code, draft["building"], draft["room"])
+        state["last_ticket"] = {**ticket, "at": time.time()}
+        self._email(ticket, update="Location added")
+        return ticket
 
     def _correct_room(self, draft: dict, state: dict) -> dict | None:
         """Same problem, same hall, a few minutes later, but a different room? Then the student is correcting
@@ -495,6 +560,13 @@ class HousingAgent:
                 ask = f"{problem} {ask}"
             return AgentReply(self._say(ask, language), kind="ask_details", options=options)
 
+        if state.get("emergency_ticket"):           # staff were already alerted; this is where it's happening
+            ticket = self._add_location(draft, state)
+            text = (f"Thanks! Emergency ticket {ticket['code']} now says {ticket['building']} room {ticket['room']}, "
+                    f"so housing staff can find you.")
+            return AgentReply(self._say(text, language), kind="ticket", ticket=ticket, calls=[CALL_SAFETY, CALL_911],
+                              options=[MY_TICKET, REPAIR, QUESTION])
+
         corrected = self._correct_room(draft, state)
         if corrected:
             text = (f"Fixed! Ticket {corrected['code']} is now for room {corrected['room']} in "
@@ -503,6 +575,11 @@ class HousingAgent:
                               options=[MY_TICKET, REPAIR, QUESTION])
 
         ticket = self._create_ticket(draft, language, channel, state)
+        if ticket["urgency"] == "emergency":        # can't wait (no heat, door won't lock...): don't queue it
+            text = (f"Done! Ticket {ticket['code']} is flagged as an EMERGENCY repair, so housing staff see it first. "
+                    f"{CANT_WAIT_HELP}")
+            return AgentReply(self._say(text, language), kind="ticket", ticket=ticket, calls=[CALL_SAFETY],
+                              options=[MY_TICKET, REPAIR, QUESTION])
         window = "2 days" if config.SLA_DAYS.get(ticket["urgency"], 14) <= 2 else "2 weeks"
         text = (f"Done! Ticket {ticket['code']} is in, and housing staff can see it now. "
                 f"The Housing Handbook says it should be fixed within {window}.")
@@ -533,12 +610,19 @@ class HousingAgent:
         else:                                                              # smoke, sparks, flooding, beeping
             text = (f"This could be dangerous. Call Campus Safety now at {config.CAMPUS_SAFETY_PHONE} so they can "
                     f"check it right away. If you see flames or anyone is hurt, get to safety and call 911.")
-        ticket = None
         if draft.get("building") and draft.get("room"):
-            ticket = self._create_ticket(draft, language, channel, state)
-            text += f" I've also logged ticket {ticket['code']} as an EMERGENCY so housing staff see it right away."
+            if state.get("emergency_ticket"):
+                ticket = self._add_location(draft, state)
+                text += (f" I've added {ticket['building']} room {ticket['room']} to emergency ticket {ticket['code']} "
+                         f"for housing staff.")
+            else:
+                ticket = self._create_ticket(draft, language, channel, state)
+                text += f" I've also logged ticket {ticket['code']} as an EMERGENCY so housing staff see it right away."
         else:
-            text += " Once you're safe, tell me your building and room number and I'll alert housing staff."
+            # Don't wait for the room: alert staff now with what we know. The place is added when we hear it.
+            ticket = self._alert_without_location(draft, language, channel, state)
+            text += (f" I've alerted housing staff (emergency ticket {ticket['code']}). Once you're safe, tell me your "
+                     f"building and room number so they can find you.")
         return AgentReply(self._say(text, language), kind="emergency", ticket=ticket, calls=calls,
                           options=[] if draft.get("building") else config.BUILDINGS)
 
