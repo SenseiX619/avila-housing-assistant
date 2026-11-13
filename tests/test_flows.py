@@ -35,6 +35,7 @@ import config                                    # noqa: E402
 TMP = Path(tempfile.mkdtemp(prefix="avila-tests-"))
 config.DB_FILE = TMP / "tickets.db"              # set BEFORE tickets.py is imported
 config.TICKET_EMAIL_TO = config.SMTP_USER = config.SMTP_APP_PASSWORD = ""   # tests never send real email
+config.STAFF_PASSWORD = ""                       # dashboard open in tests; the lock tests set their own password
 
 import agent                                     # noqa: E402
 import llm                                       # noqa: E402
@@ -509,6 +510,45 @@ class Screens(unittest.TestCase):
         with mock.patch.dict(os.environ, {"APP_URL": "http://localhost:8501"}):
             captions = " ".join(c.value for c in self.dashboard().caption)
         self.assertIn("put the app online first", captions)
+
+    def locked_dashboard(self):
+        with mock.patch.object(config, "STAFF_PASSWORD", "test-staff-pass"):
+            at = AppTest.from_file(str(ROOT / "views" / "staff_dashboard.py"), default_timeout=60)
+            at.run()
+        self.assertFalse(at.exception, at.exception)
+        return at
+
+    def test_dashboard_is_locked_without_the_password(self):
+        """staff lock: with a password set, the dashboard shows no tickets and no Reset button until it's typed"""
+        TicketStore().create("Wylie Hall", "1450", "Sink leaking")
+        at = self.locked_dashboard()
+        self.assertEqual(len(at.dataframe), 0, "no ticket table before the password")
+        self.assertEqual(len(at.metric), 0, "no counters before the password")
+        self.assertFalse(any(b.label == "Yes, reset the demo" for b in at.button), "no Reset demo before the password")
+        self.assertEqual(at.text_input[0].label, "Staff password")
+
+    def test_wrong_staff_password_stays_locked(self):
+        at = self.locked_dashboard()
+        with mock.patch.object(config, "STAFF_PASSWORD", "test-staff-pass"):
+            at.text_input[0].input("guess")
+            at.button[0].click().run()
+        self.assertIn("Wrong password.", [e.value for e in at.error])
+        self.assertEqual(len(at.metric), 0)
+
+    def test_right_staff_password_opens_the_dashboard(self):
+        TicketStore().create("Wylie Hall", "1450", "Sink leaking")
+        at = self.locked_dashboard()
+        with mock.patch.object(config, "STAFF_PASSWORD", "test-staff-pass"):
+            at.text_input[0].input("test-staff-pass")
+            at.button[0].click().run()
+        self.assertFalse(at.exception, at.exception)
+        self.assertEqual(next(m.value for m in at.metric if m.label == "Open tickets"), "1")
+        self.assertTrue(any(b.label == "Yes, reset the demo" for b in at.button))
+
+    def test_no_staff_password_warns(self):
+        """no STAFF_PASSWORD in .env -> the dashboard still opens (for practice) but says it's unlocked"""
+        captions = " ".join(c.value for c in self.dashboard().caption)
+        self.assertIn("No staff password set", captions)
 
     def test_emergency_alert_on_the_dashboard(self):
         """(d) on screen: an emergency shows as a red alert at the top of the dashboard"""

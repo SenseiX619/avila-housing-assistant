@@ -519,3 +519,25 @@ its own window, not inside another program's terminal.
 
 **Tested:** killed the app on purpose: back on the same link in 3 seconds. Link checked: the
 dashboard and QR code load, and the connection opens in about 0.2 s.
+
+---
+
+## v1.15-staff-lock - Only staff can open the Staff Dashboard
+
+**Risk (found in the Nov 13 audit):** the QR code on the projector puts this app on everyone's phone,
+and the Staff Dashboard was one tap away in the sidebar. Anyone in the audience could change a
+ticket's status or press **Reset demo** and wipe every ticket, live, during the presentation.
+
+**Fix:**
+- The dashboard asks for a staff password (`STAFF_PASSWORD` in `.env` or Streamlit Secrets, never in
+  the code). Until it's typed, the page shows only the password box: no tickets, no Reset button, no
+  status changes. Staff type it once per browser tab.
+- No password set? The dashboard still opens (for practice), with a small "🔓 No staff password set"
+  note in the sidebar, and `check_setup.py` prints a `[WARN]`.
+- The student page is unchanged: students never need a password.
+
+**Tested:** 54 offline checks (4 new: locked without the password, wrong password stays locked, right
+password opens it, the warning when no password is set). In a practice copy with its own database:
+locked page, "Wrong password.", then the dashboard opened and stayed open through the 5-second refresh.
+
+**Lesson:** a demo link shared with a room is a public link. Anything that can delete data needs a lock.

@@ -74,6 +74,12 @@ SMTP_USER = _secret("SMTP_USER")
 SMTP_APP_PASSWORD = _secret("SMTP_APP_PASSWORD")
 SMTP_HOST, SMTP_PORT = "smtp.gmail.com", 587
 
+# ---------- Staff Dashboard password ----------
+# The dashboard can change or wipe every ticket, and the QR code puts this app on the audience's phones,
+# so the dashboard asks for this password (in .env or Streamlit Secrets, never in the code).
+# Left empty, the dashboard stays open to anyone with the link and shows a warning.
+STAFF_PASSWORD = _secret("STAFF_PASSWORD")
+
 # FAKE_LLM=1 runs the app with a simple rule-based stand-in instead of Groq.
 # We use it for testing without internet. Never use it for the real demo.
 FAKE_LLM = os.getenv("FAKE_LLM", "0") == "1"

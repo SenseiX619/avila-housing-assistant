@@ -87,6 +87,7 @@ laptop's dashboard. Keep that window open; the link changes every time it starts
 
 Open the **Student Assistant** on one screen and the **Staff Dashboard** on the other
 (in the dashboard's sidebar click **🔄 Reset demo** -> **Yes, reset the demo** first: 6 sample tickets, numbered from AV-1001).
+The dashboard asks for the staff password (`STAFF_PASSWORD` in `.env`): type it before you present.
 
 1. **Question:** "Can my friend stay over this weekend?" -> answer + handbook page.
 2. **Voice repair:** tap the mic, say *"The heater in my room isn't working,"* tap stop.
@@ -164,6 +165,7 @@ Every step is a Git tag. Read `BUILD_LOG.md` alongside:
 | `v1.12-ticket-emails` | Every new ticket is emailed to housing staff (settings in .env) |
 | `v1.13-room-fixes` | Spoken room numbers accepted; repeating the room corrects the ticket |
 | `v1.14-sturdy-link` | run_online.bat runs its own app, restarts it if it stops, link never freezes |
+| `v1.15-staff-lock` | Staff Dashboard needs a password, so the audience can't reset the tickets |
 
 ```
 git checkout v0.3-qa-chat          # see the app as it was at that step

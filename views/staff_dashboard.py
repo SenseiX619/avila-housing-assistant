@@ -5,6 +5,7 @@ This page refreshes itself every 5 seconds, so a ticket a student creates by
 voice or chat shows up here live.
 """
 
+import hmac
 from datetime import datetime
 
 import pandas as pd
@@ -24,6 +25,30 @@ st.markdown(f"""
   <p style="color:#F2C14E;margin:4px 0 0 0;font-weight:600">
      Live maintenance tickets - deadlines from the Housing Handbook (urgent: 2 days, regular: 2 weeks)</p>
 </div>""", unsafe_allow_html=True)
+
+
+def staff_signed_in() -> bool:
+    """Staff only: this page can change or wipe every ticket, and the QR code puts the app on the
+    audience's phones. Asks for STAFF_PASSWORD once per browser tab. No password set -> open, with a warning."""
+    if not config.STAFF_PASSWORD:
+        st.sidebar.caption("🔓 No staff password set: anyone with the link can open this page. "
+                           "Add STAFF_PASSWORD to .env.")
+        return True
+    if st.session_state.get("staff_ok"):
+        return True
+    with st.form("staff_login"):
+        typed = st.text_input("Staff password", type="password")
+        if st.form_submit_button("Open the dashboard", type="primary"):
+            # compare_digest: checks the whole password, so timing can't give away how much was right
+            if hmac.compare_digest(typed.encode(), config.STAFF_PASSWORD.encode()):
+                st.session_state.staff_ok = True
+                st.rerun()
+            st.error("Wrong password.")
+    return False
+
+
+if not staff_signed_in():
+    st.stop()                                # nothing below (tickets, Reset demo, status changes) is shown
 
 with st.sidebar:
     show_qr(width=210)                       # the audience scans this on the projector
