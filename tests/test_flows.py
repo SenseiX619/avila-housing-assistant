@@ -643,6 +643,41 @@ class AgentFlows(unittest.TestCase):
                          ("Assigned", "Plumbing", "not fixed", None))
         self.assertEqual(self.agent.ticket_updates(self.state), [], "no 'Update' about the student's own answer")
 
+    # ---------- step 5: the numbers for leadership ----------
+    def test_summary_numbers(self):
+        """response time = report -> assigned; time to fix = report -> resolved; on time = by the handbook deadline"""
+        from datetime import datetime, timedelta
+        import tickets as ticket_module
+        start = datetime(2026, 11, 1, 9, 0)
+        fast = self.store.create("Wylie Hall", "1450", "Sink leaking", urgency="normal", created_at=start)["code"]
+        late = self.store.create("Wylie Hall", "1452", "Heater out", urgency="urgent", created_at=start)["code"]
+        waiting = self.store.create("Wylie Hall", "1454", "Pests", created_at=start)["code"]
+        self.store._update(fast, {"status": "Resolved", "assigned_at": "2026-11-01T11:00:00",
+                                  "resolved_at": "2026-11-02T09:00:00", "student_feedback": "fixed"})
+        self.store._update(late, {"status": "Resolved", "assigned_at": "2026-11-01T13:00:00",
+                                  "resolved_at": "2026-11-05T09:00:00"})       # 4 days: past the 2-day deadline
+        s = ticket_module.summary(self.store.all())
+        self.assertEqual((s["total"], s["open"], s["resolved"]), (3, 1, 2))
+        self.assertAlmostEqual(s["avg_assign_hours"], 3.0)                   # (2 h + 4 h) / 2; "waiting" not counted
+        self.assertAlmostEqual(s["avg_fix_hours"], 60.0)                     # (24 h + 96 h) / 2
+        self.assertEqual((s["on_time"], s["confirmed"]), (1, 1))
+
+    def test_summary_with_nothing_to_measure(self):
+        import tickets as ticket_module
+        s = ticket_module.summary([])
+        self.assertEqual((s["avg_assign_hours"], s["avg_fix_hours"], s["on_time"]), (None, None, 0))
+        self.assertEqual(ticket_module.nice_hours(None), "-")
+        self.assertEqual([ticket_module.nice_hours(h) for h in (0.4, 3.5, 50)], ["24 min", "3.5 hours", "2.1 days"])
+
+    def test_sample_history_shows_every_flag(self):
+        """the demo samples include waiting, assigned, in progress, fixed, fixed late, unconfirmed and reopened"""
+        self.store.load_sample_tickets()
+        all_tickets = self.store.all()
+        self.assertEqual({t["status"] for t in all_tickets}, {"Submitted", "Assigned", "In Progress", "Resolved"})
+        self.assertTrue(any(t["student_feedback"] == "not fixed" and not t["overdue"] for t in all_tickets),
+                        "a reopened ticket that shows as Reopened, not Overdue")
+        self.assertTrue(any(t["resolved_at"] and t["resolved_at"] > t["due_at"] for t in all_tickets), "one late fix")
+
     def test_ticket_email_content_and_sending(self):
         """the email says what, where, how urgent and the deadline, and goes to TICKET_EMAIL_TO"""
         ticket = self.store.create("Thompson Hall", "1214", "Heater not working", "Heating/AC", "urgent",
@@ -742,15 +777,15 @@ class Screens(unittest.TestCase):
         self.assertIn("Thompson Hall 1214", board.dataframe[0].value["Where"].tolist())
 
     def test_reset_demo_restarts_numbering_and_loads_samples(self):
-        """task 6: Reset demo -> only the 6 sample tickets, numbered AV-1001..AV-1006, next is AV-1007"""
+        """task 6: Reset demo -> only the 12 sample tickets, numbered AV-1001..AV-1012, next is AV-1013"""
         store = TicketStore()
         store.create("Wylie Hall", "1408", "Old test ticket")
         board = self.dashboard()
         next(b for b in board.button if b.label == "Yes, reset the demo").click().run()
         self.assertFalse(board.exception, board.exception)
-        self.assertEqual(sorted(t["code"] for t in store.all()), [f"AV-{1001 + i}" for i in range(6)])
-        self.assertEqual(store.create("Thompson Hall", "1214", "New")["code"], "AV-1007")
-        self.assertTrue(any("next new ticket is AV-1007" in s.value for s in board.success))
+        self.assertEqual(sorted(t["code"] for t in store.all()), [f"AV-{1001 + i}" for i in range(12)])
+        self.assertTrue(any("next new ticket is AV-1013" in s.value for s in board.success))
+        self.assertEqual(store.create("Thompson Hall", "1214", "New")["code"], "AV-1013")
 
     def test_phone_qr_code_on_the_dashboard(self):
         """phones: with an online address, the dashboard shows a QR code to the student page"""
@@ -841,6 +876,17 @@ class Screens(unittest.TestCase):
         store.update_status(code, "Resolved")
         store.record_feedback(code, fixed=False)
         self.assertIn("🔁 Reopened", self.dashboard().dataframe[0].value["Flag"].tolist())
+
+    def test_dashboard_summary_tiles(self):
+        """step 5: after Reset demo the dashboard shows response time, time to fix, on time, confirmed"""
+        TicketStore().reset_demo()
+        tiles = {m.label: m.value for m in self.dashboard().metric}
+        self.assertEqual(tiles["Open tickets"], "7")
+        self.assertEqual(tiles["✅ Resolved"], "5")
+        self.assertEqual(tiles["⏱️ Avg response time"], "9.1 hours")
+        self.assertEqual(tiles["🔧 Avg time to fix"], "5.1 days")
+        self.assertEqual(tiles["📅 Fixed on time"], "4 of 5")
+        self.assertEqual(tiles["👍 Confirmed by students"], "4 of 5")
 
     def test_emergency_alert_on_the_dashboard(self):
         """(d) on screen: an emergency shows as a red alert at the top of the dashboard"""

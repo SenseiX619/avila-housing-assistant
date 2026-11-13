@@ -645,3 +645,35 @@ the chat once, yes/no, on-screen resolve -> chat -> tap Yes, assigning on the da
 flag). In the practice copy, in a real browser: asked about AV-1001; marking it Resolved made
 "📬 Update ... Did that fix it?" appear in the chat by itself; tapping Yes -> "Ticket AV-1001 is closed",
 and the dashboard showed "✅ Confirmed fixed".
+
+---
+
+## v1.19-summary - "How we're doing" for leadership
+
+**What was missing (found in the Nov 13 audit):** the dashboard counted open, urgent, overdue and resolved
+tickets, but couldn't say **how fast** anything happened (nothing recorded when a ticket was assigned or
+fixed, until v1.18). All 6 sample tickets were waiting, so "Resolved" showed 0 in every demo.
+
+**What:**
+- A **How we're doing** row of four tiles, computed by `tickets.summary()`:
+  - **⏱️ Avg response time:** from the student's report until a team is assigned.
+  - **🔧 Avg time to fix:** from the report until staff mark it resolved.
+  - **📅 Fixed on time:** resolved within the handbook deadline (2 days urgent/emergency, 2 weeks regular).
+  - **👍 Confirmed by students:** resolved tickets where the student tapped "Yes, it's fixed".
+  Hover the ⓘ on each tile for that explanation.
+- **Requests by building**, open and resolved, for every ticket, not just open ones. It shows which hall
+  keeps having problems.
+- **Reset demo now loads 12 clearly-fake sample tickets with a history:** waiting, assigned, in progress,
+  fixed, one fixed late, one the student hasn't confirmed, one reopened. After a reset: 7 open, 5 resolved,
+  9.1-hour average response, 5.1 days to fix, 4 of 5 on time, 4 of 5 confirmed.
+- Chart colours: Avila purple (open) and a darker Avila gold (resolved). They passed the dataviz skill's
+  palette checker (colour-blind separation, normal vision, 3:1 contrast on white). The brighter Avila gold
+  failed the contrast check, so it isn't used for chart bars.
+- Fixed: the chart axis titles sat sideways next to the hall names (Streamlit swaps them on sideways bar
+  charts). They now sit under the numbers.
+
+**Tested:** 84 offline checks (4 new: the summary maths with known times, nothing-to-measure, the sample
+history, the tiles on screen). Looked at it at projector size (1280x720) in the practice copy: tiles and
+charts fit, and the legend reads Open / Resolved.
+
+**After pulling this: press Reset demo once** to load the 12 new sample tickets.

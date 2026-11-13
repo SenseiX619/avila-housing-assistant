@@ -86,7 +86,7 @@ laptop's dashboard. Keep that window open; the link changes every time it starts
 ## Demo script (Nov 4)
 
 Open the **Student Assistant** on one screen and the **Staff Dashboard** on the other
-(in the dashboard's sidebar click **🔄 Reset demo** -> **Yes, reset the demo** first: 6 sample tickets, numbered from AV-1001).
+(in the dashboard's sidebar click **🔄 Reset demo** -> **Yes, reset the demo** first: 12 sample tickets with a history, numbered AV-1001 to AV-1012).
 The dashboard asks for the staff password (`STAFF_PASSWORD` in `.env`): type it before you present.
 
 1. **Question:** "Can my friend stay over this weekend?" -> answer + handbook page.
@@ -102,6 +102,8 @@ The dashboard asks for the staff password (`STAFF_PASSWORD` in `.env`): type it 
    (911 if there are flames or someone is hurt), then an EMERGENCY ticket, with call buttons.
    A real fire ("There's a fire in my kitchen") gets 911 first.
 6. **Dashboard:** point at the ⚠️ OVERDUE flags: "these are Avila's own deadlines from the handbook."
+   Then the **How we're doing** row: average response time, average time to fix, how many were fixed on
+   time, and how many students confirmed the fix. The chart shows requests per hall, open and resolved.
 7. **Closing the loop:** keep the student chat from step 3 open. On the dashboard, under **Update a ticket**,
    pick that ticket, set **Resolved** and **Assigned to: Plumbing**, click Save. Within 5 seconds the chat says
    "📬 Update: ... is now Resolved. Did that fix it?". Tap **✅ Yes**: the dashboard flag becomes
@@ -174,6 +176,7 @@ Every step is a Git tag. Read `BUILD_LOG.md` alongside:
 | `v1.16-room-ranges` | Rooms must match their hall (Thompson 1100-1300, Wylie 1400-1600, Buchanan 400-600, Villa Ventura 200-300) |
 | `v1.17-no-waiting` | Gas, ceiling leaks, no heat, doors that won't lock, lockouts: escalated, never queued |
 | `v1.18-closed-loop` | Submitted -> Assigned -> In Progress -> Resolved; the student's chat updates by itself and asks "Did that fix it?" |
+| `v1.19-summary` | "How we're doing": response time, time to fix, fixed on time, confirmed; requests by building |
 
 ```
 git checkout v0.3-qa-chat          # see the app as it was at that step

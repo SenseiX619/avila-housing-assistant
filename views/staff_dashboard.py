@@ -13,10 +13,13 @@ import streamlit as st
 
 import config
 from phone_link import show_qr
-from tickets import STATUSES, TicketStore
+from tickets import STATUSES, TicketStore, nice_hours, summary
 
 store = TicketStore()
 PURPLE = "#4B2A7B"
+# Chart colours: Avila purple (open) and a darker Avila gold (resolved). Checked with the dataviz skill's
+# validate_palette.py: colour-blind safe, distinct, and at least 3:1 against the white page.
+OPEN_COLOR, RESOLVED_COLOR = "#6B3FA0", "#B8860B"
 
 st.markdown(f"""
 <div style="background:linear-gradient(90deg,{PURPLE},#6B3FA0);color:#fff;padding:16px 22px;
@@ -57,17 +60,17 @@ with st.sidebar:
     # Two clicks on purpose (open, then confirm), so a stray click on stage can't wipe the board.
     with st.popover("🔄 Reset demo", type="primary", width="stretch"):
         st.write("Deletes **all** tickets, numbers them from AV-1001 again, "
-                 "and loads 6 clearly-fake sample tickets.")
+                 "and loads 12 clearly-fake sample tickets with a history (some fixed, one reopened).")
         if st.button("Yes, reset the demo", type="primary", width="stretch"):
             store.reset_demo()
-            st.session_state.reset_done = True
+            st.session_state.reset_done = len(store.all())
             st.rerun()
         if st.button("Delete all tickets (no samples)", width="stretch"):
             store.reset_demo()
             store.clear()
             st.rerun()
-    if st.session_state.pop("reset_done", False):
-        st.success("Demo reset: 6 sample tickets. The next new ticket is AV-1007.")
+    if reset_count := st.session_state.pop("reset_done", 0):
+        st.success(f"Demo reset: {reset_count} sample tickets. The next new ticket is AV-{1001 + reset_count}.")
 
 
 def badge(t: dict) -> str:
@@ -102,6 +105,19 @@ def live_board() -> None:
         st.info("No tickets yet. Report a repair in the chat, or click 🔄 Reset demo in the sidebar for sample tickets.")
         return
 
+    # How we're doing: the numbers leadership asks about. Stat tiles, not charts - each is one number.
+    s = summary(tickets)
+    st.caption("**How we're doing** · all tickets, timed from the moment the student reported it")
+    d1, d2, d3, d4 = st.columns(4)
+    d1.metric("⏱️ Avg response time", nice_hours(s["avg_assign_hours"]),
+              help="From the student's report until a team was assigned")
+    d2.metric("🔧 Avg time to fix", nice_hours(s["avg_fix_hours"]),
+              help="From the student's report until staff marked it resolved")
+    d3.metric("📅 Fixed on time", f"{s['on_time']} of {s['resolved']}" if s["resolved"] else "-",
+              help="Resolved within the Housing Handbook deadline: 2 days urgent/emergency, 2 weeks regular")
+    d4.metric("👍 Confirmed by students", f"{s['confirmed']} of {s['resolved']}" if s["resolved"] else "-",
+              help="Resolved tickets where the student answered 'Yes, it's fixed' in the chat")
+
     buildings = st.multiselect("Filter by building", config.BUILDINGS, key="bfilter")
     show_resolved = st.toggle("Show resolved tickets", value=False, key="resolved")
     rows = [t for t in tickets
@@ -124,16 +140,22 @@ def live_board() -> None:
         "Due by": st.column_config.TextColumn(width=65), "Issue": st.column_config.TextColumn(width=210),
         "Where": st.column_config.TextColumn(width=135)})
 
+    left, right = st.columns(2)
+    with left:
+        # Every request, open and resolved, per hall: which building keeps having problems.
+        st.caption("Requests by building · open and resolved")
+        places = config.BUILDINGS + sorted({t["building"] for t in tickets} - set(config.BUILDINGS))
+        by_building = pd.DataFrame({
+            "Open": [sum(t["building"] == b and t["status"] != "Resolved" for t in tickets) for b in places],
+            "Resolved": [sum(t["building"] == b and t["status"] == "Resolved" for t in tickets) for b in places],
+        }, index=places)
+        st.bar_chart(by_building, color=[OPEN_COLOR, RESOLVED_COLOR], horizontal=True, stack=True,
+                     x_label="", y_label="Requests")  # horizontal: Streamlit swaps the two labels
     if open_tickets:
-        left, right = st.columns(2)
-        by_building = pd.Series([t["building"] for t in open_tickets]).value_counts()
-        by_category = pd.Series([t["category"] for t in open_tickets]).value_counts()
-        with left:
-            st.caption("Open tickets by building")
-            st.bar_chart(by_building, color=PURPLE, horizontal=True, x_label="Open tickets", y_label="")
         with right:
             st.caption("Open tickets by category")
-            st.bar_chart(by_category, color=PURPLE, horizontal=True, x_label="Open tickets", y_label="")
+            by_category = pd.Series([t["category"] for t in open_tickets]).value_counts()
+            st.bar_chart(by_category, color=OPEN_COLOR, horizontal=True, x_label="", y_label="Open tickets")
     st.caption(f"Auto-refreshes every 5 seconds · last update {datetime.now().strftime('%I:%M:%S %p')}")
 
 

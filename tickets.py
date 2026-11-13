@@ -130,19 +130,48 @@ class TicketStore:
         return self.get(code)
 
     def load_sample_tickets(self) -> None:
-        """Clearly-fake tickets so the staff dashboard has something to show in a demo."""
+        """Clearly-fake tickets so the staff dashboard has something to show in a demo, WITH a history:
+        some waiting, some assigned or in progress, some fixed (one late), one reopened by the student.
+        Times are hours/days after the report, so the response-time numbers are believable."""
         now = datetime.now()
+        # (building, room, issue, category, urgency, days ago, status, team, hours to assign, days to fix, student)
         samples = [
-            ("Thompson Hall", "1214", "Heater not turning on", "Heating/AC", "urgent", 3),
-            ("Wylie Hall", "1408", "Bathroom sink leaking under the cabinet", "Plumbing", "normal", 16),
-            ("Buchanan Hall", "502", "Desk lamp outlet not working", "Electrical", "normal", 5),
-            ("Villa Ventura", "212", "Front door lock sticking", "Door/Lock", "urgent", 1),
-            ("Thompson Hall", "1118", "Shower drain clogged", "Plumbing", "normal", 9),
-            ("Buchanan Hall", "405", "Mini fridge making loud noise", "Appliance", "normal", 2),
+            ("Thompson Hall", "1214", "Heater not turning on", "Heating/AC", "urgent", 3,
+             "Assigned", "Heating & AC", 3, None, None),
+            ("Wylie Hall", "1408", "Bathroom sink leaking under the cabinet", "Plumbing", "normal", 16,
+             "Submitted", None, None, None, None),
+            ("Buchanan Hall", "502", "Desk lamp outlet not working", "Electrical", "normal", 5,
+             "In Progress", "Electrical", 20, None, None),
+            ("Villa Ventura", "212", "Front door lock sticking", "Door/Lock", "urgent", 1,
+             "Assigned", "Locksmith", 2, None, None),
+            ("Thompson Hall", "1118", "Shower drain clogged", "Plumbing", "normal", 9,
+             "Submitted", None, None, None, None),
+            ("Buchanan Hall", "405", "Mini fridge making loud noise", "Appliance", "normal", 2,
+             "Submitted", None, None, None, None),
+            ("Wylie Hall", "1520", "Toilet keeps running", "Plumbing", "normal", 12,
+             "Resolved", "Plumbing", 6, 3, "fixed"),
+            ("Thompson Hall", "1250", "Wi-Fi keeps dropping", "Internet", "normal", 8,
+             "Resolved", "IT / Wi-Fi", 1, 1, "fixed"),
+            ("Villa Ventura", "240", "No hot water in the shower", "Plumbing", "urgent", 6,
+             "Resolved", "Plumbing", 2, 1.5, "fixed"),
+            ("Buchanan Hall", "560", "Ceiling light fixture out", "Electrical", "normal", 20,
+             "Resolved", "Electrical", 30, 16, "fixed"),            # fixed, but after the 2-week deadline
+            ("Wylie Hall", "1433", "Ants near the window", "Pest", "normal", 10,
+             "Resolved", "Custodial", 10, 4, None),                 # the student hasn't answered yet
+            ("Thompson Hall", "1190", "Bathroom fan not working", "Electrical", "normal", 11,
+             "Assigned", "Electrical", 8, None, "not fixed"),       # reopened: the student said it wasn't fixed
         ]
-        for building, room, issue, category, urgency, days_ago in samples:
-            self.create(building, room, issue, category, urgency, channel="sample",
-                        student_message="[SAMPLE DATA]", created_at=now - timedelta(days=days_ago))
+        for (building, room, issue, category, urgency, days_ago,
+             status, team, hours_to_assign, days_to_fix, student) in samples:
+            created = now - timedelta(days=days_ago)
+            ticket = self.create(building, room, issue, category, urgency, channel="sample",
+                                 student_message="[SAMPLE DATA]", created_at=created)
+            at = lambda delta: (created + delta).isoformat(timespec="seconds")
+            self._update(ticket["code"], {
+                "status": status, "assigned_to": team, "student_feedback": student,
+                "assigned_at": at(timedelta(hours=hours_to_assign)) if hours_to_assign else None,
+                "resolved_at": at(timedelta(days=days_to_fix)) if days_to_fix else None,
+                "updated_at": at(timedelta(days=days_to_fix or 0, hours=hours_to_assign or 0))})
 
     def clear(self) -> None:
         with self._connect() as db:
@@ -165,3 +194,43 @@ def with_deadline(ticket: dict) -> dict:
     ticket["due_at"] = due.isoformat(timespec="seconds")
     ticket["overdue"] = ticket.get("status") != "Resolved" and datetime.now() > due
     return ticket
+
+
+def _hours(start: str | None, end: str | None) -> float | None:
+    if not (start and end):
+        return None
+    return (datetime.fromisoformat(end) - datetime.fromisoformat(start)).total_seconds() / 3600
+
+
+def summary(tickets: list[dict]) -> dict:
+    """The numbers for leadership (staff dashboard):
+    - avg_assign_hours: report -> someone has it (assigned_at). This is the "response time".
+    - avg_fix_hours:    report -> resolved (resolved tickets only).
+    - on_time / resolved: resolved within the handbook deadline (2 days urgent/emergency, 2 weeks regular).
+    - confirmed: resolved tickets the student confirmed fixed.
+    None means "no tickets to measure yet"."""
+    def average(values):
+        values = [v for v in values if v is not None]
+        return sum(values) / len(values) if values else None
+
+    resolved = [t for t in tickets if t["status"] == "Resolved"]
+    return {
+        "total": len(tickets),
+        "open": len(tickets) - len(resolved),
+        "resolved": len(resolved),
+        "avg_assign_hours": average(_hours(t["created_at"], t["assigned_at"]) for t in tickets),
+        "avg_fix_hours": average(_hours(t["created_at"], t["resolved_at"]) for t in resolved),
+        "on_time": sum(t["resolved_at"] <= t["due_at"] for t in resolved if t["resolved_at"]),
+        "confirmed": sum(t["student_feedback"] == "fixed" for t in resolved),
+    }
+
+
+def nice_hours(hours: float | None) -> str:
+    """3.5 -> '3.5 hours', 0.4 -> '24 min', 50 -> '2.1 days', None -> '-'."""
+    if hours is None:
+        return "-"
+    if hours < 1:
+        return f"{round(hours * 60)} min"
+    if hours < 48:
+        return f"{hours:.1f} hours"
+    return f"{hours / 24:.1f} days"
