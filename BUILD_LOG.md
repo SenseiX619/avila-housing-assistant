@@ -611,3 +611,37 @@ number, so the reply names the RA and the RA on duty (the people p. 19 names for
 repair; "It smells like gas" -> 911 first + ticket AV-x "Location unknown", then "Wylie 1450" was added to that
 ticket; ceiling leak -> Campus Safety first; "door won't lock" -> EMERGENCY repair; lockout -> who to contact,
 then the fee answer. "Can I smoke in my room?" and the beeping smoke detector still get no false alarm.
+
+---
+
+## v1.18-closed-loop - Every ticket gets a full life, and the student hears back
+
+**What was missing (found in the Nov 13 audit):** tickets were Open, In Progress or Resolved, with no
+record of who had them or when. When staff marked a repair Resolved, **the student never heard**; they
+had to come back and ask. Nobody checked whether the fix actually worked.
+
+**Fix:**
+- **Four statuses** (Sensei's list): **Submitted -> Assigned -> In Progress -> Resolved.**
+- **Who and when:** staff pick a team on the dashboard ("Assigned to": Maintenance team, Plumbing,
+  Electrical, Heating & AC, Locksmith, Custodial, IT / Wi-Fi, RA on duty: teams, not real people). Each
+  ticket records `assigned_at` and `resolved_at`. Step 5's response times are measured from these.
+- **The loop back to the student:** the chat watches the tickets the student reported or asked about.
+  When staff change one, a message appears in that chat **by itself within 5 seconds**: "📬 Update:
+  ticket AV-1009 ... is now Assigned to Plumbing."
+- **"Did that fix it?"** on a resolved ticket: **✅ Yes** marks it confirmed fixed (dashboard: "✅ Confirmed
+  fixed"). **❌ No** reopens it, back to the same team (dashboard: "🔁 Reopened"), and staff get a "REOPENED"
+  email.
+- The status reply says who has it: "Assigned to Plumbing", "In Progress (Plumbing is on it)".
+- The dashboard's Status column shows the team ("Assigned · Plumbing"), and the update form starts at the
+  ticket's current status and team. The "saved" message used to vanish at once; now it stays.
+- Older databases upgrade themselves: the new columns are added, and "Open" becomes "Submitted".
+
+**Limit (on purpose):** the student only hears back while their chat is open, or when they ask about
+the ticket. Emailing or texting students needs their contact details, which this prototype doesn't
+collect (public info and fake data only). That's a next-phase item once Avila approves.
+
+**Tested:** 80 offline checks (9 new: the lifecycle times, an old database, who has it, updates reach
+the chat once, yes/no, on-screen resolve -> chat -> tap Yes, assigning on the dashboard, the Reopened
+flag). In the practice copy, in a real browser: asked about AV-1001; marking it Resolved made
+"📬 Update ... Did that fix it?" appear in the chat by itself; tapping Yes -> "Ticket AV-1001 is closed",
+and the dashboard showed "✅ Confirmed fixed".

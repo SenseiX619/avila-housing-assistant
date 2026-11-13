@@ -41,6 +41,10 @@ HOUSING_EMAIL = "HOUSING@avila.edu"
 # The staff dashboard flags tickets that pass these deadlines.
 SLA_DAYS = {"emergency": 2, "urgent": 2, "normal": 14}
 
+# Who staff can assign a ticket to on the dashboard. Teams, not real people's names (demo data only).
+ASSIGNEES = ["Maintenance team", "Plumbing", "Electrical", "Heating & AC", "Locksmith", "Custodial",
+             "IT / Wi-Fi", "RA on duty"]
+
 CATEGORIES = ["Plumbing", "Electrical", "Heating/AC", "Appliance", "Door/Lock",
               "Furniture", "Pest", "Internet", "Other"]
 

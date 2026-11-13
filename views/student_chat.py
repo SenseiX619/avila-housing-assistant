@@ -90,6 +90,25 @@ for i, msg in enumerate(st.session_state.chat):
             if choice:
                 st.session_state.pending = choice
 
+
+def add_reply(reply) -> None:
+    st.session_state.chat.append({"role": "assistant", "content": reply.text, "sources": reply.sources,
+                                  "ticket": reply.ticket, "options": reply.options, "calls": reply.calls})
+
+
+# The loop back to the student: when staff move one of this chat's tickets along on the dashboard (Assigned,
+# In Progress, Resolved), it appears here by itself within a few seconds. Resolved asks "Did that fix it?".
+@st.fragment(run_every=5)
+def watch_my_tickets() -> None:
+    updates = agent.ticket_updates(st.session_state.agent_state)
+    for reply in updates:
+        add_reply(reply)
+    if updates:
+        st.rerun()                               # redraw the whole chat with the new message at the bottom
+
+
+watch_my_tickets()
+
 # A mic problem from the last attempt (shown once, above the recorder)
 if mic_problem := st.session_state.pop("mic_problem", None):
     st.warning(f"🎤 {mic_problem}")
@@ -128,6 +147,5 @@ if user_text:
     st.session_state.chat.append({"role": "user", "content": ("🎤 " if channel == "voice" else "") + user_text})
     with st.spinner("Thinking..."):
         reply = agent.respond(user_text, st.session_state.agent_state, channel=channel)
-    st.session_state.chat.append({"role": "assistant", "content": reply.text, "sources": reply.sources,
-                                  "ticket": reply.ticket, "options": reply.options, "calls": reply.calls})
+    add_reply(reply)
     st.rerun()

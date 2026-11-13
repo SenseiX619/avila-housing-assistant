@@ -26,6 +26,9 @@ not to rebuild it. I'm learning, so explain every change in plain English.
 - Lockouts: who can let them in first (housing staff / your RA / RA on duty, handbook p. 14), then any fee answer.
 - Checks ticket status ("what's happening with AV-1003?").
 - Replies in the student's language (Spanish, Urdu, etc.); tickets are saved in English for staff.
+- Ticket life: Submitted -> Assigned (to a team, config.ASSIGNEES) -> In Progress -> Resolved, with assigned_at /
+  resolved_at times. The student's open chat checks its tickets every 5s and shows staff changes by itself;
+  Resolved asks "Did that fix it?": yes = confirmed fixed, no = reopened + staff emailed.
 - Staff Dashboard (second page) auto-refreshes every 5s. It flags overdue tickets using the
   handbook's deadlines (urgent/emergency: 2 days, regular: 2 weeks).
 

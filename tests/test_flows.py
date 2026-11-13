@@ -264,7 +264,7 @@ class AgentFlows(unittest.TestCase):
         reply = self.say("What's the status of my ticket?")
         self.assertEqual(reply.kind, "status")
         self.assertIn(code, reply.text)
-        self.assertIn("Open", reply.text)
+        self.assertIn("Submitted", reply.text)
 
         self.store.update_status(code, "In Progress")          # staff update it on the dashboard
         self.assertIn("In Progress", self.say("What's the status of my ticket?").text)
@@ -557,6 +557,92 @@ class AgentFlows(unittest.TestCase):
         normal = self.store.create("Wylie Hall", "1450", "Sink leaking")
         self.assertIsNone(notify.ticket_email(normal)["Importance"])
 
+    # ---------- step 4: the full life of a ticket, and back to the student ----------
+    def test_ticket_lifecycle_records_who_and_when(self):
+        """Submitted -> Assigned (who + when) -> In Progress -> Resolved (when); reopening clears 'resolved'"""
+        t = self.store.create("Wylie Hall", "1450", "Sink leaking")
+        self.assertEqual((t["status"], t["assigned_to"], t["assigned_at"], t["resolved_at"]),
+                         ("Submitted", None, None, None))
+        t = self.store.update_status(t["code"], "Assigned", assigned_to="Plumbing")
+        self.assertEqual((t["status"], t["assigned_to"]), ("Assigned", "Plumbing"))
+        assigned_at = t["assigned_at"]
+        self.assertTrue(assigned_at)
+        t = self.store.update_status(t["code"], "In Progress")
+        self.assertEqual((t["assigned_to"], t["assigned_at"]), ("Plumbing", assigned_at), "assignee and time kept")
+        t = self.store.update_status(t["code"], "Resolved")
+        self.assertTrue(t["resolved_at"])
+        self.assertFalse(t["overdue"])
+        t = self.store.update_status(t["code"], "In Progress")
+        self.assertIsNone(t["resolved_at"])
+
+    def test_old_database_is_upgraded(self):
+        """a database from before v1.18 (no assignee columns, status 'Open') still opens, as 'Submitted'"""
+        import sqlite3
+        path = TMP / "old.db"
+        with sqlite3.connect(path) as db:
+            db.execute("""CREATE TABLE tickets (id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT UNIQUE,
+                created_at TEXT NOT NULL, updated_at TEXT NOT NULL, building TEXT, room TEXT, issue TEXT NOT NULL,
+                category TEXT, urgency TEXT, status TEXT DEFAULT 'Open', language TEXT, channel TEXT,
+                student_message TEXT)""")
+            db.execute("""INSERT INTO tickets (code, created_at, updated_at, building, room, issue, urgency, status)
+                          VALUES ('AV-1001', '2026-11-01T10:00:00', '2026-11-01T10:00:00', 'Wylie Hall', '1450',
+                                  'Sink leaking', 'normal', 'Open')""")
+        t = TicketStore(path).get("AV-1001")
+        self.assertEqual((t["status"], t["assigned_to"]), ("Submitted", None))
+
+    def test_status_says_who_has_it(self):
+        """(e) status -> 'Assigned to Plumbing', then 'In Progress (Plumbing is on it)'"""
+        code = self.store.create("Wylie Hall", "1450", "Sink leaking")["code"]
+        self.store.update_status(code, "Assigned", assigned_to="Plumbing")
+        self.assertIn("Assigned to Plumbing", self.say(f"What's the status of {code}?").text)
+        self.store.update_status(code, "In Progress")
+        self.assertIn("In Progress (Plumbing is on it)", self.say(f"What's the status of {code}?").text)
+
+    def test_staff_updates_reach_the_student_chat(self):
+        """staff move the ticket on the dashboard -> an 'Update' message in that student's chat, once"""
+        for message in (agent.REPAIR, "💧 Leak / plumbing", "Wylie Hall", "1450"):
+            code = (self.say(message).ticket or {}).get("code")
+        self.assertEqual(self.agent.ticket_updates(self.state), [], "nothing changed yet")
+        self.store.update_status(code, "Assigned", assigned_to="Plumbing")
+        updates = self.agent.ticket_updates(self.state)
+        self.assertEqual(len(updates), 1)
+        self.assertIn(f"Update: ticket {code}", updates[0].text)
+        self.assertIn("Assigned to Plumbing", updates[0].text)
+        self.assertEqual(self.agent.ticket_updates(self.state), [], "each change is told once")
+
+    def resolve_and_check(self):
+        code = self.store.create("Wylie Hall", "1450", "Sink leaking")["code"]
+        self.say(f"What's the status of {code}?")                 # this chat now watches the ticket
+        self.store.update_status(code, "Resolved", assigned_to="Plumbing")
+        update = self.agent.ticket_updates(self.state)[0]
+        self.assertIn("Did that fix it?", update.text)
+        self.assertEqual(update.options, [agent.FIXED_YES, agent.FIXED_NO])
+        return code
+
+    def test_resolved_ticket_confirmed_fixed(self):
+        """Resolved -> 'Did that fix it?' -> yes: the student confirmed it; the loop is closed"""
+        code = self.resolve_and_check()
+        with mock.patch.object(notify, "send_ticket_email") as send:
+            reply = self.say(agent.FIXED_YES)
+        self.assertIn("closed", reply.text)
+        send.assert_not_called()
+        t = self.store.get(code)
+        self.assertEqual((t["status"], t["student_feedback"]), ("Resolved", "fixed"))
+        self.assertIn("You confirmed it's fixed", self.say(f"What's the status of {code}?").text)
+        self.assertEqual(self.agent.ticket_updates(self.state), [])
+
+    def test_resolved_ticket_not_fixed_is_reopened(self):
+        """Resolved -> 'Did that fix it?' -> no: reopened, back to the same team, and staff are emailed"""
+        code = self.resolve_and_check()
+        with mock.patch.object(notify, "send_ticket_email") as send:
+            reply = self.say(agent.FIXED_NO)
+        self.assertIn("reopened", reply.text)
+        self.assertIn("REOPENED", send.call_args.kwargs["update"])
+        t = self.store.get(code)
+        self.assertEqual((t["status"], t["assigned_to"], t["student_feedback"], t["resolved_at"]),
+                         ("Assigned", "Plumbing", "not fixed", None))
+        self.assertEqual(self.agent.ticket_updates(self.state), [], "no 'Update' about the student's own answer")
+
     def test_ticket_email_content_and_sending(self):
         """the email says what, where, how urgent and the deadline, and goes to TICKET_EMAIL_TO"""
         ticket = self.store.create("Thompson Hall", "1214", "Heater not working", "Heating/AC", "urgent",
@@ -719,6 +805,42 @@ class Screens(unittest.TestCase):
         """no STAFF_PASSWORD in .env -> the dashboard still opens (for practice) but says it's unlocked"""
         captions = " ".join(c.value for c in self.dashboard().caption)
         self.assertIn("No staff password set", captions)
+
+    def test_resolved_on_the_dashboard_shows_in_the_chat(self):
+        """on screen: the student reports a repair; staff resolve it; the chat shows the update with Yes/No"""
+        at = self.chat("My heater isn't working", "Thompson 1214")
+        code = TicketStore().all()[0]["code"]
+        TicketStore().update_status(code, "Resolved", assigned_to="Heating & AC")
+        at.run()                                       # what the 5-second check does by itself
+        self.assertFalse(at.exception, at.exception)
+        self.assertIn(f"Update: ticket {code}", self.last_reply(at))
+        # (Streamlit shows a button's leading emoji as its icon, so the options read without it)
+        self.assertEqual(list(at.pills[0].options), ["Yes, it's fixed", "No, still broken"])
+        at.pills[0].set_value(agent.FIXED_YES).run()
+        self.assertFalse(at.exception, at.exception)
+        self.assertIn("closed", self.last_reply(at))
+        self.assertEqual(TicketStore().get(code)["student_feedback"], "fixed")
+
+    def test_assign_on_the_dashboard(self):
+        """on screen: pick a team and a status, Save -> saved, and the table shows 'Assigned · Plumbing'"""
+        TicketStore().create("Wylie Hall", "1450", "Sink leaking")
+        board = self.dashboard()
+        boxes = {s.label: s for s in board.selectbox}
+        boxes["New status"].set_value("Assigned")
+        boxes["Assigned to"].set_value("Plumbing")
+        next(b for b in board.button if b.label == "Save").click().run()
+        self.assertFalse(board.exception, board.exception)
+        t = TicketStore().all()[0]
+        self.assertEqual((t["status"], t["assigned_to"]), ("Assigned", "Plumbing"))
+        self.assertTrue(any("is now Assigned (Plumbing)" in s.value for s in board.success))
+        self.assertIn("Assigned · Plumbing", board.dataframe[0].value["Status"].tolist())
+
+    def test_reopened_flag_on_the_dashboard(self):
+        store = TicketStore()
+        code = store.create("Wylie Hall", "1450", "Sink leaking")["code"]
+        store.update_status(code, "Resolved")
+        store.record_feedback(code, fixed=False)
+        self.assertIn("🔁 Reopened", self.dashboard().dataframe[0].value["Flag"].tolist())
 
     def test_emergency_alert_on_the_dashboard(self):
         """(d) on screen: an emergency shows as a red alert at the top of the dashboard"""

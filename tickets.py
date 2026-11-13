@@ -13,8 +13,13 @@ from pathlib import Path
 import config
 
 COLUMNS = ["id", "code", "created_at", "updated_at", "building", "room", "issue", "category",
-           "urgency", "status", "language", "channel", "student_message"]
-STATUSES = ["Open", "In Progress", "Resolved"]
+           "urgency", "status", "language", "channel", "student_message",
+           "assigned_to", "assigned_at", "resolved_at", "student_feedback"]
+# A ticket's life: Submitted (the student reported it) -> Assigned (staff gave it to someone) -> In Progress
+# -> Resolved (staff say it's fixed). The student then confirms: student_feedback = "fixed", or "not fixed",
+# which reopens it.
+STATUSES = ["Submitted", "Assigned", "In Progress", "Resolved"]
+NEW_COLUMNS = ["assigned_to", "assigned_at", "resolved_at", "student_feedback"]     # added in v1.18
 
 
 class TicketStore:
@@ -33,11 +38,17 @@ class TicketStore:
                     issue           TEXT NOT NULL,
                     category        TEXT,
                     urgency         TEXT,
-                    status          TEXT DEFAULT 'Open',
+                    status          TEXT DEFAULT 'Submitted',
                     language        TEXT,
                     channel         TEXT,
                     student_message TEXT
                 )""")
+            # Databases made before v1.18 lack the new columns and say "Open": bring them up to date.
+            have = {row["name"] for row in db.execute("PRAGMA table_info(tickets)")}
+            for column in NEW_COLUMNS:
+                if column not in have:
+                    db.execute(f"ALTER TABLE tickets ADD COLUMN {column} TEXT")
+            db.execute("UPDATE tickets SET status = 'Submitted' WHERE status = 'Open'")
 
     def _connect(self):
         # a fresh connection per call keeps it safe with Streamlit's threads
@@ -52,7 +63,7 @@ class TicketStore:
             cur = db.execute(
                 """INSERT INTO tickets (created_at, updated_at, building, room, issue, category,
                                         urgency, status, language, channel, student_message)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, 'Open', ?, ?, ?)""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, 'Submitted', ?, ?, ?)""",
                 (now, now, building, room, issue, category, urgency, language, channel, student_message))
             code = f"AV-{1000 + cur.lastrowid}"          # friendly ID students can say out loud
             db.execute("UPDATE tickets SET code = ? WHERE id = ?", (code, cur.lastrowid))
@@ -68,10 +79,41 @@ class TicketStore:
             rows = db.execute("SELECT * FROM tickets ORDER BY id DESC").fetchall()
         return [with_deadline(dict(r)) for r in rows]
 
-    def update_status(self, code: str, status: str) -> None:
+    def update_status(self, code: str, status: str, assigned_to: str | None = None) -> dict | None:
+        """Staff move a ticket along. Also records WHEN: assigned_at the first time someone has it, resolved_at
+        when it's fixed - that's what the dashboard's response times are measured from.
+        assigned_to=None leaves the assignee as it is; "" removes it."""
+        ticket = self.get(code)
+        if not ticket:
+            return None
+        now = datetime.now().isoformat(timespec="seconds")
+        changes = {"status": status, "updated_at": now}
+        if assigned_to is not None:
+            changes["assigned_to"] = assigned_to.strip() or None
+        if status == "Submitted":
+            changes["assigned_at"] = None                   # back in the queue: nobody has it yet
+        elif not ticket["assigned_at"]:
+            changes["assigned_at"] = now                    # Assigned, In Progress or Resolved: someone has it
+        changes["resolved_at"] = now if status == "Resolved" else None
+        return self._update(code, changes)
+
+    def record_feedback(self, code: str, fixed: bool) -> dict | None:
+        """The student answers "Did that fix it?". No -> the ticket is reopened: back to whoever had it
+        (Assigned), or to the queue (Submitted)."""
+        ticket = self.get(code)
+        if not ticket:
+            return None
+        changes = {"student_feedback": "fixed" if fixed else "not fixed",
+                   "updated_at": datetime.now().isoformat(timespec="seconds")}
+        if not fixed:
+            changes.update(status="Assigned" if ticket["assigned_to"] else "Submitted", resolved_at=None)
+        return self._update(code, changes)
+
+    def _update(self, code: str, changes: dict) -> dict:
+        names = ", ".join(f"{column} = ?" for column in changes)        # column names are ours, never typed in
         with self._connect() as db:
-            db.execute("UPDATE tickets SET status = ?, updated_at = ? WHERE code = ?",
-                       (status, datetime.now().isoformat(timespec="seconds"), code))
+            db.execute(f"UPDATE tickets SET {names} WHERE code = ?", (*changes.values(), code.upper()))
+        return self.get(code)
 
     def update_room(self, code: str, room: str) -> dict:
         """Fix the room on a ticket (e.g. speech misheard "322" as "3-2")."""

@@ -102,6 +102,10 @@ The dashboard asks for the staff password (`STAFF_PASSWORD` in `.env`): type it 
    (911 if there are flames or someone is hurt), then an EMERGENCY ticket, with call buttons.
    A real fire ("There's a fire in my kitchen") gets 911 first.
 6. **Dashboard:** point at the ⚠️ OVERDUE flags: "these are Avila's own deadlines from the handbook."
+7. **Closing the loop:** keep the student chat from step 3 open. On the dashboard, under **Update a ticket**,
+   pick that ticket, set **Resolved** and **Assigned to: Plumbing**, click Save. Within 5 seconds the chat says
+   "📬 Update: ... is now Resolved. Did that fix it?". Tap **✅ Yes**: the dashboard flag becomes
+   **✅ Confirmed fixed** (turn on "Show resolved tickets"). Tapping **❌ No** reopens it instead.
 
 **Before you present:** run `run.bat` 30 minutes early, test the mic in the room, and keep
 a screen recording of the demo as a backup. In the browser, click the mic icon in the address
@@ -169,6 +173,7 @@ Every step is a Git tag. Read `BUILD_LOG.md` alongside:
 | `v1.15-staff-lock` | Staff Dashboard needs a password, so the audience can't reset the tickets |
 | `v1.16-room-ranges` | Rooms must match their hall (Thompson 1100-1300, Wylie 1400-1600, Buchanan 400-600, Villa Ventura 200-300) |
 | `v1.17-no-waiting` | Gas, ceiling leaks, no heat, doors that won't lock, lockouts: escalated, never queued |
+| `v1.18-closed-loop` | Submitted -> Assigned -> In Progress -> Resolved; the student's chat updates by itself and asks "Did that fix it?" |
 
 ```
 git checkout v0.3-qa-chat          # see the app as it was at that step

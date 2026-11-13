@@ -73,9 +73,11 @@ with st.sidebar:
 def badge(t: dict) -> str:
     """Status shown as icon + words (never colour alone)."""
     if t["status"] == "Resolved":
-        return "✅ Resolved"
+        return "✅ Confirmed fixed" if t["student_feedback"] == "fixed" else "✅ Resolved"
     if t["overdue"]:
         return "⚠️ OVERDUE"
+    if t["student_feedback"] == "not fixed":
+        return "🔁 Reopened"                    # staff said fixed, the student said it isn't
     if t["urgency"] == "emergency":
         return "🚨 Emergency"
     return "🟠 Urgent" if t["urgency"] == "urgent" else "🟣 On track"
@@ -111,15 +113,15 @@ def live_board() -> None:
         "Due by": datetime.fromisoformat(t["due_at"]).strftime("%b %d"),
         "Issue": t["issue"],
         "Where": f"{t['building']} {t['room']}",
-        "Status": t["status"],
+        "Status": t["status"] + (f" · {t['assigned_to']}" if t["assigned_to"] else ""),
         "Via": t["channel"].title(),
         "Language": t["language"],
     } for t in rows])
     # Most important columns first, sized to fit a 1280-wide projector. The flag already says
     # Urgent/Emergency, and the category is in the chart below.
     st.dataframe(table, hide_index=True, width="stretch", column_config={
-        "Ticket": st.column_config.TextColumn(width=75), "Flag": st.column_config.TextColumn(width=115),
-        "Due by": st.column_config.TextColumn(width=65), "Issue": st.column_config.TextColumn(width=240),
+        "Ticket": st.column_config.TextColumn(width=75), "Flag": st.column_config.TextColumn(width=145),
+        "Due by": st.column_config.TextColumn(width=65), "Issue": st.column_config.TextColumn(width=210),
         "Where": st.column_config.TextColumn(width=135)})
 
     if open_tickets:
@@ -140,13 +142,22 @@ live_board()
 st.divider()
 st.subheader("Update a ticket")
 all_tickets = store.all()
+NOBODY = "(nobody yet)"
 if all_tickets:
-    col1, col2, col3 = st.columns([2, 1, 1])
-    choice = col1.selectbox("Ticket", [f"{t['code']} - {t['issue']} ({t['building']} {t['room']})"
-                                       for t in all_tickets])
-    new_status = col2.selectbox("New status", STATUSES)
-    col3.write("")
-    if col3.button("Save", type="primary", width="stretch", key="save_status"):
-        store.update_status(choice.split(" - ")[0], new_status)
-        st.success(f"{choice.split(' - ')[0]} is now {new_status}.")
+    col1, col2, col3, col4 = st.columns([2, 1, 1, 0.6])
+    by_label = {f"{t['code']} - {t['issue']} ({t['building']} {t['room']})": t for t in all_tickets}
+    ticket = by_label[col1.selectbox("Ticket", list(by_label))]
+    # The status and assignee boxes start at the chosen ticket's current values.
+    new_status = col2.selectbox("New status", STATUSES, index=STATUSES.index(ticket["status"])
+                                if ticket["status"] in STATUSES else 0)
+    people = [NOBODY, *config.ASSIGNEES]
+    assignee = col3.selectbox("Assigned to", people, index=people.index(ticket["assigned_to"])
+                              if ticket["assigned_to"] in people else 0)
+    col4.write("")
+    if col4.button("Save", type="primary", width="stretch", key="save_status"):
+        store.update_status(ticket["code"], new_status, assigned_to="" if assignee == NOBODY else assignee)
+        st.session_state.saved = f"{ticket['code']} is now {new_status}" + (
+            f" ({assignee})." if assignee != NOBODY else ".") + " If the student's chat is open, they see it there."
         st.rerun()
+    if saved := st.session_state.pop("saved", None):
+        st.success(saved)

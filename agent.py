@@ -184,6 +184,7 @@ ISSUE_BUTTONS = {
     "📶 Wi-Fi": ("Internet", "Wi-Fi or internet not working", "normal"),
 }
 SOMETHING_ELSE = "✏️ Something else"
+FIXED_YES, FIXED_NO = "✅ Yes, it's fixed", "❌ No, still broken"     # "Did that fix it?" on a resolved ticket
 EXAMPLE_QUESTIONS = ["Can my friend stay over?", "I'm locked out. Is there a fee?", "When are quiet hours?",
                      "Can I have a pet?"]
 ROOM_ONLY = re.compile(r"^\W*(?:room|rm)?\W*([a-z]?\d{1,4}[a-z]?)\W*$", re.I)      # "1214", "Room 1214.", "1210B"
@@ -280,6 +281,7 @@ class HousingAgent:
         """state = this student's conversation memory (kept by the app between messages)."""
         state.setdefault("history", [])
         state.setdefault("my_tickets", [])
+        state.setdefault("seen", {})                  # tickets this chat watches -> the status we last told them
         analysis = {}
         try:
             reply = self._quick_reply(message, state, channel)
@@ -323,6 +325,8 @@ class HousingAgent:
                               kind="ask_details", options=EXAMPLE_QUESTIONS)
         if message == MY_TICKET:
             return self._handle_status("", language, state)
+        if message in (FIXED_YES, FIXED_NO) and state.get("confirm_ticket"):
+            return self._handle_feedback(message == FIXED_YES, language, state)
         if message == EMERGENCY:
             text = (f"If there's a fire or someone is hurt, call 911 now. For smoke, sparks, flooding or anything "
                     f"unsafe, call Campus Safety at {config.CAMPUS_SAFETY_PHONE}. Then tell me what's happening "
@@ -464,6 +468,7 @@ class HousingAgent:
             language=language, channel=channel, student_message=draft.get("student_message", ""))
         state["draft"] = None
         state["my_tickets"].append(ticket["code"])
+        state["seen"][ticket["code"]] = ticket["status"]          # watch it: staff updates show up in this chat
         state["last_ticket"] = {**ticket, "at": time.time()}
         self._email(ticket)
         return ticket
@@ -486,6 +491,7 @@ class HousingAgent:
             student_message=draft.get("student_message", ""))
         state["emergency_ticket"] = ticket["code"]
         state["my_tickets"].append(ticket["code"])
+        state["seen"][ticket["code"]] = ticket["status"]
         self._email(ticket)
         return ticket
 
@@ -636,11 +642,60 @@ class HousingAgent:
         if not ticket:
             return AgentReply(self._say(f"I couldn't find ticket {code}. Can you double-check the number?",
                                         language), kind="status")
-        text = f"Ticket {code} ({ticket['issue']}, {ticket['building']} {ticket['room']}) is {ticket['status']}."
+        state["seen"][code] = ticket["status"]                    # watch it: staff updates show up in this chat
+        return self._status_reply(ticket, language, state)
+
+    def _status_reply(self, ticket: dict, language: str, state: dict, update: bool = False) -> AgentReply:
+        """Where a ticket stands, in plain words. A resolved ticket asks "Did that fix it?"."""
+        status, who = ticket["status"], ticket.get("assigned_to")
+        name = f"{ticket['code']} ({ticket['issue']}, {ticket['building']} {ticket['room']})"
+        text = f"📬 Update: ticket {name} is now " if update else f"Ticket {name} is "
+        text += {"Submitted": "Submitted. Housing staff have it and will assign it soon.",
+                 "Assigned": f"Assigned{' to ' + who if who else ''}.",
+                 "In Progress": f"In Progress{' (' + who + ' is on it)' if who else ''}.",
+                 "Resolved": "Resolved: housing staff marked it fixed."}.get(status, f"{status}.")
+        options = [REPAIR, QUESTION]
+        if status == "Resolved" and ticket.get("student_feedback") == "fixed":
+            text += " You confirmed it's fixed. Thanks!"
+        elif status == "Resolved":
+            text += " Did that fix it?"
+            options = [FIXED_YES, FIXED_NO]
+            state["confirm_ticket"] = ticket["code"]
+        elif ticket.get("student_feedback") == "not fixed":
+            text += " It was reopened because it still wasn't fixed."
         if ticket["overdue"]:
             text += (" It's past the Housing Handbook's repair deadline, so it's flagged overdue for staff. "
                      f"You can also email {config.HOUSING_EMAIL} or talk to your RA.")
-        return AgentReply(self._say(text, language), kind="status", ticket=ticket, options=[REPAIR, QUESTION])
+        return AgentReply(self._say(text, language), kind="status", ticket=ticket, options=options)
+
+    def _handle_feedback(self, fixed: bool, language: str, state: dict) -> AgentReply:
+        """The student's answer to "Did that fix it?": yes closes the loop, no reopens the ticket for staff."""
+        code = state.pop("confirm_ticket")
+        ticket = self.tickets.record_feedback(code, fixed)
+        if not ticket:
+            return AgentReply(self._say(f"I couldn't find ticket {code} any more.", language), kind="status",
+                              options=MAIN_MENU)
+        state["seen"][code] = ticket["status"]               # our own change: no "Update" message about it
+        if fixed:
+            text = f"Great, thanks for confirming! Ticket {code} is closed."
+        else:
+            text = f"Sorry it's still not fixed. I've reopened ticket {code} and told housing staff."
+            self._email(ticket, update="REOPENED - the student says it's still not fixed")
+        return AgentReply(self._say(text, language), kind="status", ticket=ticket, options=[MY_TICKET, REPAIR, QUESTION])
+
+    def ticket_updates(self, state: dict) -> list[AgentReply]:
+        """Did staff change a ticket this student reported or asked about? Then say so in the chat - the loop
+        back to the student. The chat page checks every few seconds; no AI call (unless we translate)."""
+        replies = []
+        for code, last_told in list(state.get("seen", {}).items()):
+            ticket = self.tickets.get(code)
+            if ticket and ticket["status"] != last_told:
+                state["seen"][code] = ticket["status"]
+                reply = self._status_reply(ticket, state.get("language", "English"), state, update=True)
+                state.setdefault("history", []).append({"role": "assistant", "content": reply.text})
+                write_log({"event": "status_update_shown", "ticket": code, "status": ticket["status"]})
+                replies.append(reply)
+        return replies
 
     def _answer_question(self, message: str, query: str, language: str, state: dict) -> AgentReply:
         hits = self.retriever.search(query, k=4)
