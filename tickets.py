@@ -84,12 +84,12 @@ class TicketStore:
         """Clearly-fake tickets so the staff dashboard has something to show in a demo."""
         now = datetime.now()
         samples = [
-            ("Thompson Hall", "214", "Heater not turning on", "Heating/AC", "urgent", 3),
-            ("Wylie Hall", "108", "Bathroom sink leaking under the cabinet", "Plumbing", "normal", 16),
-            ("Buchanan Hall", "302", "Desk lamp outlet not working", "Electrical", "normal", 5),
-            ("Villa Ventura", "B12", "Front door lock sticking", "Door/Lock", "urgent", 1),
-            ("Thompson Hall", "118", "Shower drain clogged", "Plumbing", "normal", 9),
-            ("Buchanan Hall", "205", "Mini fridge making loud noise", "Appliance", "normal", 2),
+            ("Thompson Hall", "1214", "Heater not turning on", "Heating/AC", "urgent", 3),
+            ("Wylie Hall", "1408", "Bathroom sink leaking under the cabinet", "Plumbing", "normal", 16),
+            ("Buchanan Hall", "502", "Desk lamp outlet not working", "Electrical", "normal", 5),
+            ("Villa Ventura", "212", "Front door lock sticking", "Door/Lock", "urgent", 1),
+            ("Thompson Hall", "1118", "Shower drain clogged", "Plumbing", "normal", 9),
+            ("Buchanan Hall", "405", "Mini fridge making loud noise", "Appliance", "normal", 2),
         ]
         for building, room, issue, category, urgency, days_ago in samples:
             self.create(building, room, issue, category, urgency, channel="sample",

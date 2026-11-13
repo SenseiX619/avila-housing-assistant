@@ -120,9 +120,9 @@ class AgentFlows(unittest.TestCase):
         self.assertIn("Tap your hall", first.text)
         self.assertEqual(first.options, config.BUILDINGS)
 
-        second = self.say("Thompson 214", channel="voice")
+        second = self.say("Thompson 1214", channel="voice")
         self.assertEqual(second.kind, "ticket")
-        self.assertEqual((second.ticket["building"], second.ticket["room"]), ("Thompson Hall", "214"))
+        self.assertEqual((second.ticket["building"], second.ticket["room"]), ("Thompson Hall", "1214"))
         self.assertEqual(second.ticket["channel"], "voice")
         self.assertEqual([t["code"] for t in self.store.all()], [second.ticket["code"]])
 
@@ -133,11 +133,11 @@ class AgentFlows(unittest.TestCase):
             self.assertIn("🔥 Heat / AC", self.say(agent.REPAIR).options)
             self.assertEqual(self.say("🔥 Heat / AC").options, config.BUILDINGS)
             self.assertIn("room number", self.say("Thompson Hall").text)
-            done = self.say("214")
+            done = self.say("1214")
         self.assertEqual(done.kind, "ticket")
         t = done.ticket
         self.assertEqual((t["category"], t["urgency"], t["building"], t["room"]),
-                         ("Heating/AC", "urgent", "Thompson Hall", "214"))
+                         ("Heating/AC", "urgent", "Thompson Hall", "1214"))
         self.assertIn(agent.MY_TICKET, done.options)
 
     def test_main_menu_buttons(self):
@@ -162,10 +162,10 @@ class AgentFlows(unittest.TestCase):
 
     def test_c_spanish_reply_english_ticket(self):
         """(c) Spanish repair -> reply translated to Spanish, ticket saved in English"""
-        analysis = ai_said("maintenance", language="Spanish", building="Wylie Hall", room="108",
+        analysis = ai_said("maintenance", language="Spanish", building="Wylie Hall", room="1408",
                            issue="Bathroom leak", category="Plumbing", urgency="urgent")
         with mock.patch("llm.chat_json", return_value=analysis):
-            reply = self.say("Mi baño tiene una fuga en Wylie 108")
+            reply = self.say("Mi baño tiene una fuga en Wylie 1408")
         self.assertEqual(reply.kind, "ticket")
         self.assertTrue(reply.text.startswith("[FAKE TRANSLATION]"), "reply should be translated")
         self.assertEqual(reply.ticket["issue"], "Bathroom leak")
@@ -174,17 +174,17 @@ class AgentFlows(unittest.TestCase):
 
     def test_d_smoke_calls_campus_safety_first(self):
         """(d) smoke from an outlet -> Campus Safety first, 911 as the backup, then the emergency ticket"""
-        reply = self.say("There's smoke coming from an outlet in Buchanan 302")
+        reply = self.say("There's smoke coming from an outlet in Buchanan 502")
         self.assertEqual(reply.kind, "emergency")
         self.assertEqual(reply.ticket["urgency"], "emergency")
-        self.assertEqual((reply.ticket["building"], reply.ticket["room"]), ("Buchanan Hall", "302"))
+        self.assertEqual((reply.ticket["building"], reply.ticket["room"]), ("Buchanan Hall", "502"))
         self.assertLess(reply.text.index(config.CAMPUS_SAFETY_PHONE), reply.text.index("911"))
         self.assertLess(reply.text.index("911"), reply.text.index(reply.ticket["code"]))
         self.assertEqual(reply.calls, [agent.CALL_SAFETY, agent.CALL_911])
 
     def test_d_real_fire_calls_911_first(self):
         """(d) a real fire -> 911 first, then Campus Safety, then the emergency ticket"""
-        reply = self.say("There's a fire in Buchanan 302!")
+        reply = self.say("There's a fire in Buchanan 502!")
         self.assertEqual(reply.kind, "emergency")
         self.assertLess(reply.text.index("911"), reply.text.index(config.CAMPUS_SAFETY_PHONE))
         self.assertLess(reply.text.index(config.CAMPUS_SAFETY_PHONE), reply.text.index(reply.ticket["code"]))
@@ -199,10 +199,10 @@ class AgentFlows(unittest.TestCase):
 
     def test_d_spanish_fire_calls_911_first(self):
         """(d) a fire reported in Spanish -> 911 first (read from the AI's English summary)"""
-        analysis = ai_said("emergency", language="Spanish", building="Wylie Hall", room="108",
+        analysis = ai_said("emergency", language="Spanish", building="Wylie Hall", room="1408",
                            issue="Fire in the room", urgency="emergency")
         with mock.patch("llm.chat_json", return_value=analysis):
-            reply = self.say("¡Hay un incendio en mi cuarto! Wylie 108")
+            reply = self.say("¡Hay un incendio en mi cuarto! Wylie 1408")
         self.assertLess(reply.text.index("911"), reply.text.index(config.CAMPUS_SAFETY_PHONE))
 
     def test_d_rules_question_about_smoking_is_not_an_emergency(self):
@@ -215,10 +215,10 @@ class AgentFlows(unittest.TestCase):
 
     def test_d_beeping_smoke_detector_is_an_urgent_repair(self):
         """(d) beeping smoke detector -> safety reminder first, then an URGENT repair (not an emergency)"""
-        analysis = ai_said("maintenance", building="Wylie Hall", room="210",
+        analysis = ai_said("maintenance", building="Wylie Hall", room="1410",
                            issue="Smoke detector beeping", urgency="normal")
         with mock.patch("llm.chat_json", return_value=analysis):
-            reply = self.say("My smoke detector keeps beeping, I'm in Wylie 210")
+            reply = self.say("My smoke detector keeps beeping, I'm in Wylie 1410")
         self.assertEqual(reply.kind, "ticket")
         self.assertEqual(reply.ticket["urgency"], "urgent")
         self.assertTrue(reply.text.startswith(agent.SAFETY_REMINDER))
@@ -231,34 +231,34 @@ class AgentFlows(unittest.TestCase):
 
     def test_d_danger_net_reads_the_ai_english_summary(self):
         """(d) safety net: smoke reported in Spanish, AI files it as a repair -> still an emergency"""
-        analysis = ai_said("maintenance", language="Spanish", building="Buchanan Hall", room="302",
+        analysis = ai_said("maintenance", language="Spanish", building="Buchanan Hall", room="502",
                            issue="Smoke coming from an outlet", urgency="normal")
         with mock.patch("llm.chat_json", return_value=analysis):
-            reply = self.say("Sale humo de un enchufe en Buchanan 302")
+            reply = self.say("Sale humo de un enchufe en Buchanan 502")
         self.assertEqual(reply.kind, "emergency")
         self.assertEqual(reply.ticket["urgency"], "emergency")
 
     def test_d_emergency_net_catches_ai_calling_it_a_repair(self):
         """(d) safety net: the AI says 'maintenance' for smoke -> still an emergency"""
-        analysis = ai_said("maintenance", building="Buchanan Hall", room="302",
+        analysis = ai_said("maintenance", building="Buchanan Hall", room="502",
                            issue="Outlet smoking", urgency="normal")
         with mock.patch("llm.chat_json", return_value=analysis):
-            reply = self.say("There's smoke coming from an outlet in Buchanan 302")
+            reply = self.say("There's smoke coming from an outlet in Buchanan 502")
         self.assertEqual(reply.kind, "emergency")
         self.assertEqual(reply.ticket["urgency"], "emergency")
 
     def test_d_emergency_is_never_downgraded(self):
         """(d) an emergency stays an emergency when the room comes in a later message"""
         self.say("There's smoke in the hallway!")
-        analysis = ai_said("maintenance", building="Buchanan Hall", room="302", urgency="normal")
+        analysis = ai_said("maintenance", building="Buchanan Hall", room="502", urgency="normal")
         with mock.patch("llm.chat_json", return_value=analysis):
-            reply = self.say("Buchanan 302")
+            reply = self.say("Buchanan 502")
         self.assertEqual(reply.ticket["urgency"], "emergency")
 
     def test_e_status_of_my_ticket(self):
         """(e) 'What's the status of my ticket?' -> this conversation's latest ticket, live status"""
         self.say("My heater isn't working")
-        code = self.say("Thompson 214").ticket["code"]
+        code = self.say("Thompson 1214").ticket["code"]
 
         reply = self.say("What's the status of my ticket?")
         self.assertEqual(reply.kind, "status")
@@ -270,7 +270,7 @@ class AgentFlows(unittest.TestCase):
 
     def test_e_status_in_a_new_conversation_asks_for_the_number(self):
         """(e) new conversation: asks for the ticket number, then looks it up"""
-        code = self.store.create("Wylie Hall", "108", "Sink leaking")["code"]
+        code = self.store.create("Wylie Hall", "1408", "Sink leaking")["code"]
         self.assertEqual(self.say("What's the status of my ticket?").kind, "ask_details")
         reply = self.say(f"It's {code}")
         self.assertEqual(reply.kind, "status")
@@ -321,18 +321,18 @@ class AgentFlows(unittest.TestCase):
     def test_ai_down_emergency_still_handled(self):
         """the AI is unreachable -> rule-based fallback: smoke still gets the safety message and a ticket"""
         with mock.patch("llm.chat", side_effect=RuntimeError("The AI service is unavailable right now")):
-            reply = self.say("There's smoke coming from an outlet in Buchanan 302")
+            reply = self.say("There's smoke coming from an outlet in Buchanan 502")
         self.assertEqual(reply.kind, "emergency")
-        self.assertEqual((reply.ticket["building"], reply.ticket["room"]), ("Buchanan Hall", "302"))
+        self.assertEqual((reply.ticket["building"], reply.ticket["room"]), ("Buchanan Hall", "502"))
         self.assertTrue(any('"used_fallback": true' in row for row in self.last_log_rows()))
 
     def test_ai_sends_garbage_repair_still_works(self):
         """the AI sends non-JSON twice on every message -> a repair still becomes a ticket"""
         with mock.patch("llm.chat", return_value="hmm"):
             self.assertEqual(self.say("My heater isn't working").kind, "ask_details")
-            reply = self.say("Thompson 214")
+            reply = self.say("Thompson 1214")
         self.assertEqual(reply.kind, "ticket")
-        self.assertEqual((reply.ticket["building"], reply.ticket["room"]), ("Thompson Hall", "214"))
+        self.assertEqual((reply.ticket["building"], reply.ticket["room"]), ("Thompson Hall", "1214"))
 
     def test_sloppy_json_shape_does_not_crash(self):
         """valid JSON with the wrong shape ('ticket': 'none', odd intent) -> handled, no error"""
@@ -358,21 +358,22 @@ class AgentFlows(unittest.TestCase):
     def test_every_new_ticket_is_emailed(self):
         """a finished repair report hands the new ticket to the emailer"""
         with mock.patch.object(notify, "send_ticket_email") as send:
-            for message in (agent.REPAIR, "🔥 Heat / AC", "Thompson Hall", "214"):
+            for message in (agent.REPAIR, "🔥 Heat / AC", "Thompson Hall", "1214"):
                 ticket = self.say(message).ticket
         send.assert_called_once()
         self.assertEqual(send.call_args.args[0]["code"], ticket["code"])
 
     def test_repeating_the_room_corrects_the_ticket(self):
-        """speech misheard the room ("3-2"); saying it again fixes that ticket - no duplicate, an UPDATED email"""
+        """speech misheard the room ("two twenty" for 222); saying it again fixes that ticket - no duplicate,
+        an UPDATED email"""
         heater = dict(issue="Heater not working", building="Villa Ventura", category="Heating/AC", urgency="urgent")
         with mock.patch.object(notify, "send_ticket_email") as send:
-            with mock.patch("llm.chat_json", return_value=ai_said("maintenance", room="3-2", **heater)):
-                first = self.say("Villa Ventura, room number three to two", channel="voice").ticket
-            with mock.patch("llm.chat_json", return_value=ai_said("maintenance", room="322", **heater)):
-                fixed = self.say("Villa Ventura, room three twenty-two", channel="voice")
+            with mock.patch("llm.chat_json", return_value=ai_said("maintenance", room="220", **heater)):
+                first = self.say("Villa Ventura, room two twenty", channel="voice").ticket
+            with mock.patch("llm.chat_json", return_value=ai_said("maintenance", room="222", **heater)):
+                fixed = self.say("Villa Ventura, room two twenty-two", channel="voice")
         self.assertEqual(fixed.ticket["code"], first["code"])
-        self.assertEqual(fixed.ticket["room"], "322")
+        self.assertEqual(fixed.ticket["room"], "222")
         self.assertIn("Fixed!", fixed.text)
         self.assertEqual(len(self.store.all()), 1, "no duplicate ticket")
         self.assertEqual(send.call_args.kwargs["update"], "Room corrected")
@@ -380,16 +381,96 @@ class AgentFlows(unittest.TestCase):
     def test_a_different_problem_is_a_new_ticket(self):
         """a new problem in the same hall is a new ticket, not a correction"""
         with mock.patch("llm.chat_json", return_value=ai_said("maintenance", issue="Heater not working",
-                                                               building="Wylie Hall", room="108")):
-            first = self.say("My heater is broken, Wylie 108").ticket
+                                                               building="Wylie Hall", room="1408")):
+            first = self.say("My heater is broken, Wylie 1408").ticket
         with mock.patch("llm.chat_json", return_value=ai_said("maintenance", issue="Sink leaking",
-                                                               building="Wylie Hall", room="110")):
-            second = self.say("Also the sink in Wylie 110 is leaking").ticket
+                                                               building="Wylie Hall", room="1410")):
+            second = self.say("Also the sink in Wylie 1410 is leaking").ticket
         self.assertNotEqual(first["code"], second["code"])
+
+    # ---------- routing: the room must belong to the hall (config.ROOM_RANGES) ----------
+    def no_ai(self):
+        no_ai = mock.Mock(side_effect=AssertionError("a tapped button must not call the AI"))
+        return mock.patch("llm.chat_json", no_ai), mock.patch("llm.chat", no_ai)
+
+    def test_room_ranges(self):
+        """Thompson 1100-1300, Wylie 1400-1600, Buchanan 400-600, Villa Ventura 200-300 (both ends included)"""
+        for room, hall in [("1100", "Thompson Hall"), ("1300", "Thompson Hall"), ("1400", "Wylie Hall"),
+                           ("1600", "Wylie Hall"), ("400", "Buchanan Hall"), ("600", "Buchanan Hall"),
+                           ("200", "Villa Ventura"), ("300", "Villa Ventura"), ("Room 1450", "Wylie Hall"),
+                           ("14-50", "Wylie Hall"), ("1210b", "Thompson Hall")]:
+            self.assertEqual(agent.hall_for_room(room), hall, room)
+        for room in ["1099", "1301", "1350", "700", "199", "3-2", "B12", "99999", "", None]:
+            self.assertIsNone(agent.hall_for_room(room), room)
+
+    def test_invalid_room_is_asked_again(self):
+        """'Wylie 99999' -> no ticket, says Wylie's rooms are 1400-1600 and asks again; '1450' -> the ticket"""
+        with mock.patch("llm.chat_json", return_value=ai_said("maintenance", building="Wylie Hall", room="99999",
+                                                               issue="Sink leaking")):
+            reply = self.say("My sink is leaking, Wylie 99999")
+        self.assertEqual(reply.kind, "ask_details")
+        self.assertIn("isn't an Avila housing room", reply.text)
+        self.assertIn("1400-1600", reply.text)
+        self.assertEqual(self.store.all(), [], "no ticket for a room that doesn't exist")
+        done = self.say("1450")
+        self.assertEqual((done.kind, done.ticket["building"], done.ticket["room"]), ("ticket", "Wylie Hall", "1450"))
+
+    def test_spoken_dashes_are_not_a_room(self):
+        """speech wrote "3-2" for three twenty-two -> not a Villa Ventura room, so it's asked again (no ticket)"""
+        with mock.patch("llm.chat_json", return_value=ai_said("maintenance", building="Villa Ventura", room="3-2",
+                                                               issue="Heater not working")):
+            reply = self.say("Villa Ventura, room three to two", channel="voice")
+        self.assertEqual(reply.kind, "ask_details")
+        self.assertIn("200-300", reply.text)
+        self.assertEqual(self.store.all(), [])
+
+    def test_room_in_the_wrong_hall_offers_the_right_one(self):
+        """'Thompson 1450' (a Wylie number) -> no ticket; one tap on 'Wylie Hall, room 1450' fixes it, no AI"""
+        with mock.patch("llm.chat_json", return_value=ai_said("maintenance", building="Thompson Hall", room="1450",
+                                                               issue="Heater not working")):
+            reply = self.say("My heater isn't working, Thompson 1450")
+        self.assertEqual(reply.kind, "ask_details")
+        self.assertIn("1100-1300", reply.text)
+        self.assertEqual(reply.options, ["Wylie Hall, room 1450"])
+        self.assertEqual(self.store.all(), [])
+        json_off, chat_off = self.no_ai()
+        with json_off, chat_off:
+            done = self.say("Wylie Hall, room 1450")
+        self.assertEqual((done.kind, done.ticket["building"], done.ticket["room"]), ("ticket", "Wylie Hall", "1450"))
+
+    def test_room_number_alone_fills_in_the_hall(self):
+        """tap Report a repair -> Heat / AC -> type '1450' without a hall: a Wylie Hall ticket, zero AI calls"""
+        json_off, chat_off = self.no_ai()
+        with json_off, chat_off:
+            self.say(agent.REPAIR)
+            self.say("🔥 Heat / AC")
+            done = self.say("1450")
+        self.assertEqual((done.kind, done.ticket["building"], done.ticket["room"]), ("ticket", "Wylie Hall", "1450"))
+
+    def test_unknown_hall_is_asked_again(self):
+        """a hall that isn't one of the four -> says so and shows the four hall buttons"""
+        with mock.patch("llm.chat_json", return_value=ai_said("maintenance", building="Marian Center",
+                                                               issue="Sink leaking")):
+            reply = self.say("My sink is leaking in the Marian Center")
+        self.assertIn("I don't know a hall called Marian Center", reply.text)
+        self.assertEqual(reply.options, config.BUILDINGS)
+        self.assertEqual(self.store.all(), [])
+
+    def test_emergency_room_alone_fills_in_the_hall(self):
+        """'smoke in room 1450' -> emergency ticket for Wylie Hall 1450 (emergencies are never held back)"""
+        reply = self.say("There's smoke in room 1450!")
+        self.assertEqual(reply.kind, "emergency")
+        self.assertEqual((reply.ticket["building"], reply.ticket["room"]), ("Wylie Hall", "1450"))
+
+    def test_sample_tickets_use_real_rooms(self):
+        """the demo's sample tickets all fit their hall's room range"""
+        self.store.load_sample_tickets()
+        for t in self.store.all():
+            self.assertEqual(agent.hall_for_room(t["room"]), t["building"], t["code"])
 
     def test_ticket_email_content_and_sending(self):
         """the email says what, where, how urgent and the deadline, and goes to TICKET_EMAIL_TO"""
-        ticket = self.store.create("Thompson Hall", "214", "Heater not working", "Heating/AC", "urgent",
+        ticket = self.store.create("Thompson Hall", "1214", "Heater not working", "Heating/AC", "urgent",
                                    channel="voice", student_message="My heater isn't working")
         results = []
         with self.email_settings(), mock.patch("smtplib.SMTP") as smtp:
@@ -400,20 +481,20 @@ class AgentFlows(unittest.TestCase):
         self.assertEqual(email["To"], "staff@example.edu")
         self.assertIn(ticket["code"], email["Subject"])
         self.assertIn("URGENT", email["Subject"])
-        self.assertIn("Thompson Hall, room 214", email.get_content())
+        self.assertIn("Thompson Hall, room 1214", email.get_content())
         self.assertIn("My heater isn't working", email.get_content())
         self.assertEqual(results, ["sent"])
 
     def test_no_email_settings_no_email(self):
         """email not set up in .env -> nothing is sent, and the ticket still works"""
-        ticket = self.store.create("Wylie Hall", "108", "Sink leaking")
+        ticket = self.store.create("Wylie Hall", "1408", "Sink leaking")
         with mock.patch("smtplib.SMTP") as smtp:
             self.assertFalse(notify.send_ticket_email(ticket, background=False))
         smtp.assert_not_called()
 
     def test_failed_email_never_breaks_anything(self):
         """wrong password or no internet -> 'failed: ...' in the log, no crash"""
-        ticket = self.store.create("Wylie Hall", "108", "Sink leaking")
+        ticket = self.store.create("Wylie Hall", "1408", "Sink leaking")
         results = []
         with self.email_settings(), mock.patch("smtplib.SMTP", side_effect=OSError("no internet")):
             notify.send_ticket_email(ticket, on_done=results.append, background=False)
@@ -479,21 +560,21 @@ class Screens(unittest.TestCase):
 
     def test_repair_ticket_appears_on_the_dashboard(self):
         """(b) on screen: a repair made in the chat shows up on the staff dashboard"""
-        reply = self.last_reply(self.chat("My heater isn't working", "Thompson 214"))
+        reply = self.last_reply(self.chat("My heater isn't working", "Thompson 1214"))
         self.assertIn("🎫 AV-", reply)
         board = self.dashboard()
         self.assertEqual(next(m.value for m in board.metric if m.label == "Open tickets"), "1")
-        self.assertIn("Thompson Hall 214", board.dataframe[0].value["Where"].tolist())
+        self.assertIn("Thompson Hall 1214", board.dataframe[0].value["Where"].tolist())
 
     def test_reset_demo_restarts_numbering_and_loads_samples(self):
         """task 6: Reset demo -> only the 6 sample tickets, numbered AV-1001..AV-1006, next is AV-1007"""
         store = TicketStore()
-        store.create("Wylie Hall", "108", "Old test ticket")
+        store.create("Wylie Hall", "1408", "Old test ticket")
         board = self.dashboard()
         next(b for b in board.button if b.label == "Yes, reset the demo").click().run()
         self.assertFalse(board.exception, board.exception)
         self.assertEqual(sorted(t["code"] for t in store.all()), [f"AV-{1001 + i}" for i in range(6)])
-        self.assertEqual(store.create("Thompson Hall", "214", "New")["code"], "AV-1007")
+        self.assertEqual(store.create("Thompson Hall", "1214", "New")["code"], "AV-1007")
         self.assertTrue(any("next new ticket is AV-1007" in s.value for s in board.success))
 
     def test_phone_qr_code_on_the_dashboard(self):
@@ -552,7 +633,7 @@ class Screens(unittest.TestCase):
 
     def test_emergency_alert_on_the_dashboard(self):
         """(d) on screen: an emergency shows as a red alert at the top of the dashboard"""
-        self.chat("There's smoke coming from an outlet in Buchanan 302")
+        self.chat("There's smoke coming from an outlet in Buchanan 502")
         alerts = [e.value for e in self.dashboard().error]
         self.assertTrue(any("EMERGENCY" in a and "Buchanan Hall" in a for a in alerts), alerts)
 
@@ -563,7 +644,7 @@ class Screens(unittest.TestCase):
             at.pills[0].set_value(tap).run()
             self.assertFalse(at.exception, at.exception)
         self.assertIn("room number in Wylie Hall", self.last_reply(at))
-        at.chat_input[0].set_value("108").run()
+        at.chat_input[0].set_value("1408").run()
         self.assertIn("🎫 AV-", self.last_reply(at))
         self.assertEqual(len(at.pills), 1, "buttons only under the latest answer")
 

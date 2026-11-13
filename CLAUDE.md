@@ -12,6 +12,8 @@ not to rebuild it. I'm learning, so explain every change in plain English.
   handbook answers are 1-3 sentences.
 - Answers housing questions ONLY from the official 2026-27 Avila Housing Handbook, with page citations.
 - Creates maintenance tickets: asks only for missing details (issue, building, room), then saves a ticket like AV-1001.
+- Rooms must match the hall (config.ROOM_RANGES): Thompson 1100-1300, Wylie 1400-1600, Buchanan 400-600,
+  Villa Ventura ("the Villas") 200-300. A room alone fills in the hall; a room that doesn't fit is asked for again.
 - Emergencies: safety message FIRST, then an emergency ticket. Who to call follows the handbook
   (printed p. 23) and my call on Nov 2: a real fire, someone hurt, gas or carbon monoxide -> 911 first,
   then Campus Safety at 816-985-6079. Smoke, sparks, flooding, beeping -> Campus Safety first, 911 if
@@ -70,8 +72,8 @@ Ask me before anything big or hard to undo.
 2. DONE except my own mic retest (see Current status): test the real flows with me and fix anything broken:
    a) "Can my friend stay over this weekend?" -> answer + page citation
    b) mic: "My heater isn't working" -> asks building + room -> ticket -> appears on the dashboard
-   c) Spanish: "Mi baño tiene una fuga en Wylie 108" -> Spanish reply, English ticket
-   d) "There's smoke coming from an outlet in Buchanan 302" -> Campus Safety first, 911 as the backup
+   c) Spanish: "Mi baño tiene una fuga en Wylie 1408" -> Spanish reply, English ticket
+   d) "There's smoke coming from an outlet in Buchanan 502" -> Campus Safety first, 911 as the backup
    e) "What's the status of my ticket?" -> correct status
 3. DONE (v1.5-printed-pages): citations use the number printed on each page (exactly 1 lower than
    the PDF page; Lockouts is printed p. 14, PDF p. 15). Chunks keep both: page and pdf_page.

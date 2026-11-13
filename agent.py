@@ -78,7 +78,7 @@ Intent rules:
 Ticket rules:
 - Only fill ticket fields the student actually said; use null for anything unknown. Never guess a room.
 - Map buildings: "Thompson" -> "Thompson Hall", "Wylie" -> "Wylie Hall", "Buchanan" -> "Buchanan Hall",
-  "Villa" -> "Villa Ventura".
+  "Villa" or "Villas" -> "Villa Ventura".
 - urgency: emergency (see above); urgent = no heat, no hot water, broken lock, toilet not working,
   AC out in hot weather, active leak; normal = everything else.
 - Set "cancel": true only if the student says to cancel or forget the request.
@@ -159,7 +159,9 @@ ISSUE_BUTTONS = {
 SOMETHING_ELSE = "✏️ Something else"
 EXAMPLE_QUESTIONS = ["Can my friend stay over?", "I'm locked out. Is there a fee?", "When are quiet hours?",
                      "Can I have a pet?"]
-ROOM_ONLY = re.compile(r"^\W*(?:room|rm)?\W*([a-z]?\d{1,4}[a-z]?)\W*$", re.I)      # "214", "Room 214.", "B12"
+ROOM_ONLY = re.compile(r"^\W*(?:room|rm)?\W*([a-z]?\d{1,4}[a-z]?)\W*$", re.I)      # "1214", "Room 1214.", "1210B"
+# "Wylie Hall, room 1450" - the button we offer when a room belongs to a different hall (also works typed)
+HALL_AND_ROOM = re.compile(rf"^\W*({'|'.join(map(re.escape, config.BUILDINGS))}),? room (\w+)\W*$", re.I)
 CALL_SAFETY = ("📞 Call Campus Safety", "tel:+1" + re.sub(r"\D", "", config.CAMPUS_SAFETY_PHONE))
 CALL_911 = ("📞 Call 911", "tel:911")
 
@@ -216,6 +218,29 @@ def normalize_building(value: str | None) -> str | None:
     if "ventura" in v:
         return "Villa Ventura"
     return value.strip().title()
+
+
+# ---------- Rooms: which numbers belong to which hall (config.ROOM_RANGES) ----------
+ROOM_GUIDE = ", ".join(f"{b.split()[0]} {low}-{high}" for b, (low, high) in config.ROOM_RANGES.items())
+
+
+def clean_room(room) -> str:
+    """'Room 1450' / '14-50' (how speech writes "fourteen fifty") -> '1450'; '1210b' -> '1210B'."""
+    return re.sub(r"[^0-9A-Z]", "", re.sub(r"(?i)\b(room|rm)\b", "", str(room or "")).upper())
+
+
+def hall_for_room(room) -> str | None:
+    """The hall a room number belongs to ('1450' -> Wylie Hall), or None if it isn't a housing room."""
+    match = re.fullmatch(r"(\d{3,4})[A-Z]?", clean_room(room))
+    if not match:
+        return None
+    number = int(match.group(1))
+    return next((b for b, (low, high) in config.ROOM_RANGES.items() if low <= number <= high), None)
+
+
+def room_range(building: str) -> str:
+    low, high = config.ROOM_RANGES[building]
+    return f"{low}-{high}"
 
 
 class HousingAgent:
@@ -278,8 +303,12 @@ class HousingAgent:
             return AgentReply(self._say(text, language), kind="emergency", calls=[CALL_911, CALL_SAFETY])
         if draft.get("issue") and not draft.get("building") and message in config.BUILDINGS:
             return self._handle_maintenance(message, {"building": message}, language, state, channel)
+        hall_room = HALL_AND_ROOM.match(message)
+        if hall_room and draft.get("issue"):
+            return self._handle_maintenance(message, {"building": hall_room.group(1), "room": hall_room.group(2)},
+                                            language, state, channel)
         room = ROOM_ONLY.match(message)
-        if room and draft.get("issue") and draft.get("building") and not draft.get("room"):
+        if room and draft.get("issue") and not draft.get("room"):       # no hall yet? the number tells us
             return self._handle_maintenance(message, {"room": room.group(1).upper()}, language, state, channel)
         return None
 
@@ -417,8 +446,34 @@ class HousingAgent:
         self._email(ticket, update="Room corrected")
         return ticket
 
+    @staticmethod
+    def _check_location(draft: dict) -> tuple[str, list]:
+        """Routing: the room must belong to the hall (config.ROOM_RANGES). A room on its own fills in the
+        hall. Anything that doesn't fit is taken off the draft, so we ask for it again.
+        Returns (what was wrong, in one sentence, or "") and any extra buttons to offer."""
+        building, room = draft.get("building"), draft.get("room")
+        if building and building not in config.ROOM_RANGES:
+            draft["building"] = None
+            return f"I don't know a hall called {building}.", []
+        if not room:
+            return "", []
+        hall = hall_for_room(room)
+        if hall is None:
+            draft["room"] = None
+            rooms = f"{building} rooms are {room_range(building)}" if building else f"rooms are {ROOM_GUIDE}"
+            return f"Room {room} isn't an Avila housing room ({rooms}).", []
+        draft["room"] = clean_room(room)
+        if not building:
+            draft["building"] = hall
+        elif hall != building:
+            draft["room"] = None
+            return (f"Room {clean_room(room)} is a {hall} number, but {building} rooms are {room_range(building)}. "
+                    f"In {hall}? Tap below.", [f"{hall}, room {clean_room(room)}"])
+        return "", []
+
     def _handle_maintenance(self, message, details, language, state, channel) -> AgentReply:
         draft = self._merge_draft(details, state, message)
+        problem, extra_options = self._check_location(draft)
         missing = [k for k in ("issue", "building", "room") if not draft.get(k)]
 
         if missing:
@@ -429,10 +484,15 @@ class HousingAgent:
             elif "building" in missing:
                 issue = draft["issue"][:1].lower() + draft["issue"][1:]
                 ask = f"Got it: {issue}. Where? Tap your hall" + (
-                    ', or say it like "Thompson 214".' if "room" in missing else ".")
+                    ', or say it like "Thompson 1214".' if "room" in missing else ".")
                 options = config.BUILDINGS
+            elif problem:                                   # the problem already gave the hall's room range
+                ask = "Otherwise, what's your room number?" if extra_options else "What's your room number?"
+                options = extra_options
             else:
-                ask = f"And your room number in {draft['building']}?"
+                ask = f"What's your room number in {draft['building']} ({room_range(draft['building'])})?"
+            if problem:
+                ask = f"{problem} {ask}"
             return AgentReply(self._say(ask, language), kind="ask_details", options=options)
 
         corrected = self._correct_room(draft, state)
@@ -457,6 +517,9 @@ class HousingAgent:
             details["issue"] = message[:120]
         draft = self._merge_draft(details, state, message)
         draft["urgency"] = "emergency"
+        if not draft.get("building") and hall_for_room(draft.get("room")):
+            draft["building"] = hall_for_room(draft["room"])     # "smoke in 1450" -> Wylie Hall
+        # Room numbers aren't checked any further here: an emergency is never held back for a wrong room.
 
         words = f"{message} {details['issue']}"
         calls = [CALL_SAFETY, CALL_911]

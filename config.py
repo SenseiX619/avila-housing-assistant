@@ -30,6 +30,10 @@ HANDBOOK_NAME = "Avila Housing Handbook 2026-2027"
 
 # ---------- Avila housing facts (from the 2026-27 Housing Handbook) ----------
 BUILDINGS = ["Buchanan Hall", "Wylie Hall", "Thompson Hall", "Villa Ventura"]
+# Room numbers in each hall (both ends included). A room outside its hall's range is asked for again,
+# and a room number on its own tells us the hall ("1450" -> Wylie Hall). A suite letter is fine ("1210B").
+ROOM_RANGES = {"Thompson Hall": (1100, 1300), "Wylie Hall": (1400, 1600),
+               "Buchanan Hall": (400, 600), "Villa Ventura": (200, 300)}
 CAMPUS_SAFETY_PHONE = "816-985-6079"
 HOUSING_EMAIL = "HOUSING@avila.edu"
 

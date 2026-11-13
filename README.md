@@ -93,11 +93,11 @@ The dashboard asks for the staff password (`STAFF_PASSWORD` in `.env`): type it 
 2. **Voice repair:** tap the mic, say *"The heater in my room isn't working,"* tap stop.
    The agent asks where: tap the hall button, then say or type the room. It creates a ticket.
    **Switch screens: the ticket is already on the dashboard.**
-3. **Tap-only repair:** 🔧 Report a repair -> 💧 Leak / plumbing -> Wylie Hall -> type 108.
+3. **Tap-only repair:** 🔧 Report a repair -> 💧 Leak / plumbing -> Wylie Hall -> type 1408.
    No sentences to type, no waiting for the AI.
-4. **Another language:** type *"Mi baño tiene una fuga en Wylie 108"*. The answer comes
+4. **Another language:** type *"Mi baño tiene una fuga en Wylie 1408"*. The answer comes
    back in Spanish; the ticket is saved in English for staff.
-5. **Safety:** "There's smoke coming from an outlet in Buchanan 302" -> call Campus Safety first
+5. **Safety:** "There's smoke coming from an outlet in Buchanan 502" -> call Campus Safety first
    (911 if there are flames or someone is hurt), then an EMERGENCY ticket, with call buttons.
    A real fire ("There's a fire in my kitchen") gets 911 first.
 6. **Dashboard:** point at the ⚠️ OVERDUE flags: "these are Avila's own deadlines from the handbook."
@@ -166,6 +166,7 @@ Every step is a Git tag. Read `BUILD_LOG.md` alongside:
 | `v1.13-room-fixes` | Spoken room numbers accepted; repeating the room corrects the ticket |
 | `v1.14-sturdy-link` | run_online.bat runs its own app, restarts it if it stops, link never freezes |
 | `v1.15-staff-lock` | Staff Dashboard needs a password, so the audience can't reset the tickets |
+| `v1.16-room-ranges` | Rooms must match their hall (Thompson 1100-1300, Wylie 1400-1600, Buchanan 400-600, Villa Ventura 200-300) |
 
 ```
 git checkout v0.3-qa-chat          # see the app as it was at that step

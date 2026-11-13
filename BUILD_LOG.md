@@ -541,3 +541,35 @@ password opens it, the warning when no password is set). In a practice copy with
 locked page, "Wrong password.", then the dashboard opened and stayed open through the 5-second refresh.
 
 **Lesson:** a demo link shared with a room is a public link. Anything that can delete data needs a lock.
+
+---
+
+## v1.16-room-ranges - Every ticket goes to a real room in the right hall
+
+**What broke (found in the Nov 13 audit):** any room number was accepted. "Wylie 99999" and
+"Buchanan 3-2" both became tickets, and staff would have walked to rooms that don't exist. The
+sample tickets and the demo script used rooms like Thompson 214 and Wylie 108, which aren't real.
+
+**The rule (Sensei, Nov 11):** Thompson 1100-1300, Wylie 1400-1600, Buchanan 400-600, Villa Ventura
+("the Villas") 200-300, both ends included. It lives in `config.ROOM_RANGES`. A suite letter is fine (1210B).
+
+**Fix (`agent.py`):**
+- **A room on its own tells us the hall.** "1450" means Wylie Hall, so the student doesn't have to say
+  it. Typing just the number skips the AI.
+- **A room that isn't a housing room** ("Wylie 99999") makes no ticket. The reply says which rooms
+  that hall has and asks again.
+- **A room from a different hall** ("Thompson 1450") makes no ticket. The reply says 1450 is a Wylie number
+  and offers a one-tap button, "Wylie Hall, room 1450", or the student types their Thompson room.
+- **A hall that isn't one of the four** gets the four hall buttons.
+- Spoken numbers with dashes ("14-50") are read as 1450. A dash that doesn't make a room ("3-2") is asked again.
+- **Emergencies are never held back** for a wrong room: the safety message and the emergency ticket
+  come first. A room on its own still fills in the hall there too.
+- Sample tickets, the README demo script and CLAUDE.md now use real rooms (Thompson 1214, Wylie 1408,
+  Buchanan 502, Villa Ventura 212...).
+
+**Tested:** 62 offline checks (8 new: every range edge, invalid room, wrong hall + one-tap fix, room
+alone, unknown hall, emergency with a room alone, sample tickets all real). With the real AI
+(temporary database, no emails): "Thompson 1450" -> Wylie button -> ticket; "room fourteen fifty" ->
+Wylie Hall 1450; "the Villas room 250" -> Villa Ventura 250; "Wylie 99" in Spanish -> asked again in Spanish.
+
+**After pulling this: press Reset demo on the dashboard once**, so the sample tickets use the new rooms.
