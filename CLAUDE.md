@@ -29,6 +29,9 @@ not to rebuild it. I'm learning, so explain every change in plain English.
 - Ticket life: Submitted -> Assigned (to a team, config.ASSIGNEES) -> In Progress -> Resolved, with assigned_at /
   resolved_at times. The student's open chat checks its tickets every 5s and shows staff changes by itself;
   Resolved asks "Did that fix it?": yes = confirmed fixed, no = reopened + staff emailed.
+- Duplicates (tickets.same_problem): same hall + room, still open, same problem (shared key word, same category,
+  no new fixture) -> added to that ticket (reports + 1, "Reported again" email, urgency only ever goes up).
+  The same student repeating themselves is just reminded. A resolved ticket is never reused.
 - Staff Dashboard: "How we're doing" tiles (tickets.summary(): avg response = report -> assigned, avg time to fix,
   fixed on time, confirmed by students) and requests by building (open + resolved). Reset demo loads 12 samples
   with a history. Chart colours #6B3FA0 / #B8860B passed the dataviz skill's validate_palette.py.

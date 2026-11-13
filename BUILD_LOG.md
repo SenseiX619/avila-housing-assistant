@@ -677,3 +677,34 @@ history, the tiles on screen). Looked at it at projector size (1280x720) in the 
 charts fit, and the legend reads Open / Resolved.
 
 **After pulling this: press Reset demo once** to load the 12 new sample tickets.
+
+---
+
+## v1.20-no-duplicates - The same problem reported twice is one ticket
+
+**What broke (found in the Nov 13 audit):** reporting the same problem twice in one chat made two tickets,
+and so did two roommates reporting the same leak. Staff would send two people to one sink.
+
+**Fix:** before saving a ticket, the agent looks for an **open** ticket in the **same hall and room** for
+the **same problem** (`tickets.same_problem`): they share a key word ("sink", "heat"), have the same category,
+and the new report names no fixture the open ticket doesn't.
+- **The same student again:** "You already reported this: ticket AV-1001 ... is Submitted. No need to
+  report it again." No second ticket, no second email.
+- **A roommate:** "This was already reported: ticket AV-1001 ... I've added your report." The ticket counts
+  **2 reports** (dashboard: "Sink leaking · 2 reports"), keeps their words for staff, and staff get one
+  "Reported again (2 reports)" email. The roommate's chat then follows that ticket too.
+- **More serious this time** ("outlet not working" is open, now "sparks from the outlet"): the safety
+  message still comes first, and the same ticket goes up to EMERGENCY ("Reported again, now an EMERGENCY").
+  Urgency only ever goes up.
+- **Not duplicates:** a different problem in the same room (sink vs toilet), the same problem next door,
+  or a problem coming back after its ticket was resolved. Each gets its own ticket.
+
+**What broke along the way:** in the real-AI check, "Also our toilet is clogged" came back from the AI as
+"toilet clogged and sink leaking" (it pulled in the earlier sink), so it was merged into the sink ticket and
+the toilet was lost. **Fix:** a new fixture (toilet) always means a new problem, and the ANALYZE prompt now
+says the issue is only the problem in the latest message.
+
+**Tested:** 90 offline checks (6 new). With the real AI (temporary database, no emails): sink -> AV-1001;
+"still leaking" -> "You already reported this"; roommate's dripping sink -> AV-1001, 2 reports; "Also our
+toilet is clogged" -> its own ticket AV-1002; "outlet doesn't work" then "Sparks from the outlet!" -> safety
+message first and the outlet ticket became EMERGENCY with 2 reports.

@@ -31,7 +31,7 @@ import config
 import llm
 import notify
 from knowledge import Retriever
-from tickets import TicketStore
+from tickets import URGENCY_RANK, TicketStore
 
 
 @dataclass
@@ -77,6 +77,8 @@ Intent rules:
 
 Ticket rules:
 - Only fill ticket fields the student actually said; use null for anything unknown. Never guess a room.
+- "issue" is ONLY the problem in the LATEST MESSAGE if it reports one ("Also our toilet is clogged" -> "Toilet
+  clogged"), never problems from earlier in the conversation.
 - Map buildings: "Thompson" -> "Thompson Hall", "Wylie" -> "Wylie Hall", "Buchanan" -> "Buchanan Hall",
   "Villa" or "Villas" -> "Villa Ventura".
 - urgency: emergency (see above); urgent = no heat, no hot water, broken lock, toilet not working,
@@ -462,6 +464,9 @@ class HousingAgent:
         return draft
 
     def _create_ticket(self, draft: dict, language: str, channel: str, state: dict) -> dict:
+        same = self.tickets.find_open_duplicate(draft["building"], draft["room"], draft["issue"], draft.get("category"))
+        if same:
+            return self._add_to_existing(same, draft, state)
         ticket = self.tickets.create(
             building=draft["building"], room=draft["room"], issue=draft["issue"],
             category=draft.get("category") or "Other", urgency=draft.get("urgency") or "normal",
@@ -479,6 +484,24 @@ class HousingAgent:
         notify.send_ticket_email(ticket, update=update, on_done=lambda result: write_log(
             {"event": "ticket_email", "ticket": ticket["code"], "update": update or None,
              "to": config.TICKET_EMAIL_TO, "result": result}))
+
+    def _add_to_existing(self, ticket: dict, draft: dict, state: dict) -> dict:
+        """The same problem is already an open ticket in that room: no second ticket. A roommate's report is
+        counted on it (staff get one "Reported again" email); the same student repeating themselves isn't,
+        unless it got more serious (then the ticket's urgency goes up and staff are told).
+        Returns the ticket with "duplicate": "mine" or "other", for the reply."""
+        state["draft"] = None
+        mine = ticket["code"] in state["my_tickets"]
+        urgency = draft.get("urgency") or "normal"
+        more_serious = URGENCY_RANK.get(urgency, 0) > URGENCY_RANK.get(ticket["urgency"], 0)
+        if not mine or more_serious:
+            ticket = self.tickets.add_report(ticket["code"], urgency, draft.get("student_message", ""))
+            note = "now an EMERGENCY" if more_serious and urgency == "emergency" else "more urgent" if more_serious else ""
+            self._email(ticket, update=f"Reported again ({ticket['reports']} reports){', ' + note if note else ''}")
+        if not mine:
+            state["my_tickets"].append(ticket["code"])
+        state["seen"][ticket["code"]] = ticket["status"]          # watch it like their own
+        return {**ticket, "duplicate": "mine" if mine else "other"}
 
     def _alert_without_location(self, draft: dict, language: str, channel: str, state: dict) -> dict:
         """An emergency, but no building or room yet: save and email the ticket NOW with what we know, so staff
@@ -581,6 +604,18 @@ class HousingAgent:
                               options=[MY_TICKET, REPAIR, QUESTION])
 
         ticket = self._create_ticket(draft, language, channel, state)
+        if ticket.get("duplicate"):                 # already an open ticket for this problem in this room
+            where = f"{ticket['issue']}, {ticket['building']} {ticket['room']}"
+            status = ticket["status"] + (f" ({ticket['assigned_to']})" if ticket["assigned_to"] else "")
+            if ticket["duplicate"] == "mine":
+                text = (f"You already reported this: ticket {ticket['code']} ({where}) is {status}. "
+                        f"No need to report it again; I'll tell you here when it changes.")
+            else:
+                text = (f"This was already reported: ticket {ticket['code']} ({where}) is {status}. "
+                        f"I've added your report, so housing staff know it affects you too.")
+            return AgentReply(self._say(text, language), kind="ticket", ticket=ticket,
+                              calls=[CALL_SAFETY] if ticket["urgency"] == "emergency" else [],
+                              options=[MY_TICKET, REPAIR, QUESTION])
         if ticket["urgency"] == "emergency":        # can't wait (no heat, door won't lock...): don't queue it
             text = (f"Done! Ticket {ticket['code']} is flagged as an EMERGENCY repair, so housing staff see it first. "
                     f"{CANT_WAIT_HELP}")
@@ -623,7 +658,11 @@ class HousingAgent:
                          f"for housing staff.")
             else:
                 ticket = self._create_ticket(draft, language, channel, state)
-                text += f" I've also logged ticket {ticket['code']} as an EMERGENCY so housing staff see it right away."
+                if ticket.get("duplicate"):
+                    text += (f" Housing staff already have this as ticket {ticket['code']}; I've added your report "
+                             f"and it's marked EMERGENCY.")
+                else:
+                    text += f" I've also logged ticket {ticket['code']} as an EMERGENCY so housing staff see it right away."
         else:
             # Don't wait for the room: alert staff now with what we know. The place is added when we hear it.
             ticket = self._alert_without_location(draft, language, channel, state)

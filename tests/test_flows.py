@@ -588,7 +588,7 @@ class AgentFlows(unittest.TestCase):
                           VALUES ('AV-1001', '2026-11-01T10:00:00', '2026-11-01T10:00:00', 'Wylie Hall', '1450',
                                   'Sink leaking', 'normal', 'Open')""")
         t = TicketStore(path).get("AV-1001")
-        self.assertEqual((t["status"], t["assigned_to"]), ("Submitted", None))
+        self.assertEqual((t["status"], t["assigned_to"], t["reports"]), ("Submitted", None, 1))
 
     def test_status_says_who_has_it(self):
         """(e) status -> 'Assigned to Plumbing', then 'In Progress (Plumbing is on it)'"""
@@ -677,6 +677,76 @@ class AgentFlows(unittest.TestCase):
         self.assertTrue(any(t["student_feedback"] == "not fixed" and not t["overdue"] for t in all_tickets),
                         "a reopened ticket that shows as Reopened, not Overdue")
         self.assertTrue(any(t["resolved_at"] and t["resolved_at"] > t["due_at"] for t in all_tickets), "one late fix")
+
+    # ---------- step 6: the same problem reported twice ----------
+    def sink(self, room="1450", issue="Sink leaking", urgency="normal", category="Plumbing"):
+        return mock.patch("llm.chat_json", return_value=ai_said("maintenance", building="Wylie Hall", room=room,
+                                                                 issue=issue, category=category, urgency=urgency))
+
+    def test_same_problem_twice_in_one_chat(self):
+        """the same student reports the same leak again -> reminded of their ticket; no 2nd ticket, no 2nd email"""
+        with mock.patch.object(notify, "send_ticket_email") as send:
+            with self.sink():
+                first = self.say("My sink is leaking, Wylie 1450").ticket
+            with self.sink(issue="Bathroom sink leaking under the cabinet"):
+                again = self.say("The sink in Wylie 1450 is leaking")
+        self.assertEqual(again.ticket["code"], first["code"])
+        self.assertIn("You already reported this", again.text)
+        self.assertEqual(len(self.store.all()), 1)
+        self.assertEqual(self.store.get(first["code"])["reports"], 1)
+        send.assert_called_once()
+
+    def test_roommate_report_is_added_to_the_open_ticket(self):
+        """a roommate (another chat) reports the same leak -> added to that ticket: 2 reports, one update email"""
+        with self.sink():
+            first = self.say("My sink is leaking, Wylie 1450").ticket
+        roommate = {}
+        with self.sink(issue="Sink is leaking"), mock.patch.object(notify, "send_ticket_email") as send:
+            reply = self.agent.respond("Our sink is leaking, Wylie 1450", roommate)
+        self.assertEqual(reply.ticket["code"], first["code"])
+        self.assertIn("This was already reported", reply.text)
+        t = self.store.get(first["code"])
+        self.assertEqual(t["reports"], 2)
+        self.assertIn("Also reported: Our sink is leaking", t["student_message"])
+        self.assertIn("Reported again (2 reports)", send.call_args.kwargs["update"])
+        self.assertIn(first["code"], roommate["my_tickets"], "the roommate can check its status too")
+
+    def test_more_serious_report_raises_the_ticket(self):
+        """'outlet not working' is open; then 'smoke from the outlet' -> same ticket, now EMERGENCY, staff told"""
+        code = self.store.create("Buchanan Hall", "502", "Desk lamp outlet not working", "Electrical")["code"]
+        with mock.patch.object(notify, "send_ticket_email") as send:
+            reply = self.say("There's smoke coming from an outlet in Buchanan 502")
+        self.assertEqual(reply.kind, "emergency")
+        self.assertEqual(reply.ticket["code"], code)
+        self.assertEqual(self.store.get(code)["urgency"], "emergency")
+        self.assertIn("now an EMERGENCY", send.call_args.kwargs["update"])
+        self.assertLess(reply.text.index(config.CAMPUS_SAFETY_PHONE), reply.text.index(code), "safety first")
+
+    def test_not_duplicates(self):
+        """a different problem in the same room, the same problem next door, or a resolved one -> new tickets"""
+        with self.sink():
+            first = self.say("My sink is leaking, Wylie 1450").ticket
+        with self.sink(issue="Toilet clogged"):
+            toilet = self.say("And my toilet is clogged, Wylie 1450").ticket
+        with self.sink(room="1452"):
+            next_door = self.agent.respond("My sink is leaking, Wylie 1452", {}).ticket
+        self.store.update_status(first["code"], "Resolved")
+        with self.sink():
+            back_again = self.agent.respond("My sink is leaking again, Wylie 1450", {}).ticket
+        codes = {first["code"], toilet["code"], next_door["code"], back_again["code"]}
+        self.assertEqual(len(codes), 4)
+
+    def test_same_problem_rule(self):
+        import tickets as ticket_module
+        same = lambda a, ca, b, cb: ticket_module.same_problem({"issue": a, "category": ca}, {"issue": b, "category": cb})
+        self.assertTrue(same("Heater not working", "Heating/AC", "No heat", "Heating/AC"))
+        self.assertTrue(same("Wi-Fi keeps dropping", "Internet", "Wi-Fi or internet not working", "Internet"))
+        self.assertTrue(same("My air conditioning is broken", "Heating/AC", "AC not working", "Heating/AC"))
+        self.assertFalse(same("Sink leaking", "Plumbing", "Toilet clogged", "Plumbing"))
+        self.assertFalse(same("No heat", "Heating/AC", "AC not working", "Heating/AC"))
+        self.assertFalse(same("leaking bathroom sink", "Plumbing", "toilet clogged and sink leaking", "Plumbing"),
+                         "a new fixture (toilet) is a new problem, even with sink in it")
+        self.assertTrue(same("leaking bathroom sink", "Plumbing", "sink dripping", "Plumbing"))
 
     def test_ticket_email_content_and_sending(self):
         """the email says what, where, how urgent and the deadline, and goes to TICKET_EMAIL_TO"""
@@ -887,6 +957,12 @@ class Screens(unittest.TestCase):
         self.assertEqual(tiles["🔧 Avg time to fix"], "5.1 days")
         self.assertEqual(tiles["📅 Fixed on time"], "4 of 5")
         self.assertEqual(tiles["👍 Confirmed by students"], "4 of 5")
+
+    def test_report_count_on_the_dashboard(self):
+        store = TicketStore()
+        code = store.create("Wylie Hall", "1450", "Sink leaking", "Plumbing")["code"]
+        store.add_report(code, "normal", "Our sink is leaking")
+        self.assertIn("Sink leaking · 2 reports", self.dashboard().dataframe[0].value["Issue"].tolist())
 
     def test_emergency_alert_on_the_dashboard(self):
         """(d) on screen: an emergency shows as a red alert at the top of the dashboard"""

@@ -127,7 +127,7 @@ def live_board() -> None:
         "Ticket": t["code"],
         "Flag": badge(t),
         "Due by": datetime.fromisoformat(t["due_at"]).strftime("%b %d"),
-        "Issue": t["issue"],
+        "Issue": t["issue"] + (f" · {t['reports']} reports" if (t["reports"] or 1) > 1 else ""),
         "Where": f"{t['building']} {t['room']}",
         "Status": t["status"] + (f" · {t['assigned_to']}" if t["assigned_to"] else ""),
         "Via": t["channel"].title(),

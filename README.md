@@ -177,6 +177,7 @@ Every step is a Git tag. Read `BUILD_LOG.md` alongside:
 | `v1.17-no-waiting` | Gas, ceiling leaks, no heat, doors that won't lock, lockouts: escalated, never queued |
 | `v1.18-closed-loop` | Submitted -> Assigned -> In Progress -> Resolved; the student's chat updates by itself and asks "Did that fix it?" |
 | `v1.19-summary` | "How we're doing": response time, time to fix, fixed on time, confirmed; requests by building |
+| `v1.20-no-duplicates` | The same problem reported twice joins the open ticket ("2 reports") instead of a second one |
 
 ```
 git checkout v0.3-qa-chat          # see the app as it was at that step

@@ -44,6 +44,7 @@ Priority:  {flag} - Housing Handbook deadline: {days} days (due {due})
 Issue:     {ticket['issue']}
 Where:     {where}
 Category:  {ticket['category']}
+Reports:   {ticket.get('reports') or 1} student(s)
 Reported:  {reported}, by {ticket['channel']}, in {ticket['language']}
 
 The student's own words:

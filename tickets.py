@@ -6,6 +6,7 @@ the same CREATE TABLE / INSERT / SELECT you've been learning. Moving to Postgres
 later only changes this file.
 """
 
+import re
 import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -14,12 +15,15 @@ import config
 
 COLUMNS = ["id", "code", "created_at", "updated_at", "building", "room", "issue", "category",
            "urgency", "status", "language", "channel", "student_message",
-           "assigned_to", "assigned_at", "resolved_at", "student_feedback"]
+           "assigned_to", "assigned_at", "resolved_at", "student_feedback", "reports"]
 # A ticket's life: Submitted (the student reported it) -> Assigned (staff gave it to someone) -> In Progress
 # -> Resolved (staff say it's fixed). The student then confirms: student_feedback = "fixed", or "not fixed",
 # which reopens it.
 STATUSES = ["Submitted", "Assigned", "In Progress", "Resolved"]
-NEW_COLUMNS = ["assigned_to", "assigned_at", "resolved_at", "student_feedback"]     # added in v1.18
+# Added later (v1.18, v1.20): older databases get them automatically. "reports" = how many students reported it.
+NEW_COLUMNS = {"assigned_to": "TEXT", "assigned_at": "TEXT", "resolved_at": "TEXT", "student_feedback": "TEXT",
+               "reports": "INTEGER DEFAULT 1"}
+URGENCY_RANK = {"normal": 0, "urgent": 1, "emergency": 2}
 
 
 class TicketStore:
@@ -45,9 +49,9 @@ class TicketStore:
                 )""")
             # Databases made before v1.18 lack the new columns and say "Open": bring them up to date.
             have = {row["name"] for row in db.execute("PRAGMA table_info(tickets)")}
-            for column in NEW_COLUMNS:
+            for column, kind in NEW_COLUMNS.items():
                 if column not in have:
-                    db.execute(f"ALTER TABLE tickets ADD COLUMN {column} TEXT")
+                    db.execute(f"ALTER TABLE tickets ADD COLUMN {column} {kind}")
             db.execute("UPDATE tickets SET status = 'Submitted' WHERE status = 'Open'")
 
     def _connect(self):
@@ -129,6 +133,25 @@ class TicketStore:
                        (building, room, datetime.now().isoformat(timespec="seconds"), code))
         return self.get(code)
 
+    def find_open_duplicate(self, building: str, room: str, issue: str, category: str | None) -> dict | None:
+        """An open ticket for the same problem in the same room (a roommate, or the same student again)."""
+        new = {"issue": issue, "category": category}
+        for ticket in self.all():
+            if (ticket["status"] != "Resolved" and ticket["building"] == building
+                    and str(ticket["room"]).upper() == str(room).upper() and same_problem(ticket, new)):
+                return ticket
+        return None
+
+    def add_report(self, code: str, urgency: str, student_message: str) -> dict:
+        """Someone else reported the same problem: count it, keep their words for staff, and raise the
+        urgency if the new report is more serious (an outlet that's now smoking). Never lowers it."""
+        ticket = self.get(code)
+        higher = max(ticket["urgency"] or "normal", urgency or "normal", key=lambda u: URGENCY_RANK.get(u, 0))
+        words = f"{ticket['student_message'] or ''} | Also reported: {student_message}".strip(" |")
+        return self._update(code, {"reports": (ticket["reports"] or 1) + 1, "urgency": higher,
+                                   "student_message": words,
+                                   "updated_at": datetime.now().isoformat(timespec="seconds")})
+
     def load_sample_tickets(self) -> None:
         """Clearly-fake tickets so the staff dashboard has something to show in a demo, WITH a history:
         some waiting, some assigned or in progress, some fixed (one late), one reopened by the student.
@@ -184,6 +207,37 @@ class TicketStore:
             db.execute("DELETE FROM tickets")
             db.execute("DELETE FROM sqlite_sequence WHERE name = 'tickets'")
         self.load_sample_tickets()
+
+
+# Words that don't tell two problems apart ("not working", "my room"...). The rest are compared by their first
+# 4 letters, so "heater", "heating" and "heat" match, and so do "leak" and "leaking".
+GENERIC_WORDS = set("""the and for not isn doesn won don can are was with from into under near very really just still
+again keeps keep help please need have has there here some been being get got getting make making stopped turn
+turning working work works broken problem issue room hall wylie thompson buchanan villa ventura our its this that
+any all""".split())
+
+
+def problem_words(text: str | None) -> set[str]:
+    text = re.sub(r"\bwi-?fi\b|\binternet\b", "wifi", (text or "").lower())          # one word for Wi-Fi problems
+    words = re.findall(r"[a-z]+", re.sub(r"\ba/?c\b|\bair condition\w*", "ac", text))  # and one for the AC
+    return {w[:4] for w in words if (len(w) > 2 or w == "ac") and w not in GENERIC_WORDS}
+
+
+# The things that break. A new report that names one the open ticket doesn't ("toilet clogged and sink
+# leaking" vs an open "leaking sink") is a different problem, even though both say "sink".
+FIXTURE_WORDS = {w[:4] for w in """sink toilet shower tub drain faucet tap heater heat light lamp outlet switch door
+lock key window blinds fridge refrigerator freezer microwave oven stove washer dryer wifi fan ceiling wall floor
+carpet bed mattress desk chair dresser closet mirror elevator""".split()} | {"ac"}
+
+
+def same_problem(old: dict, new: dict) -> bool:
+    """Is a new report the same problem as an open ticket? They share a key word ("sink" / "Bathroom sink
+    leaking"), have the same category (or one has none), and the new one names no fixture the old one doesn't.
+    "Sink leaking" vs "Toilet clogged" -> different, even in the same room."""
+    old_words, new_words = problem_words(old["issue"]), problem_words(new["issue"])
+    categories = {old.get("category") or "Other", new.get("category") or "Other"}
+    new_things = (new_words & FIXTURE_WORDS) - (old_words & FIXTURE_WORDS)
+    return bool(old_words & new_words) and (len(categories) == 1 or "Other" in categories) and not new_things
 
 
 def with_deadline(ticket: dict) -> dict:
