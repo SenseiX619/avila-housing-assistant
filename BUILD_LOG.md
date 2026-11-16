@@ -708,3 +708,36 @@ says the issue is only the problem in the latest message.
 "still leaking" -> "You already reported this"; roommate's dripping sink -> AV-1001, 2 reports; "Also our
 toilet is clogged" -> its own ticket AV-1002; "outlet doesn't work" then "Sparks from the outlet!" -> safety
 message first and the outlet ticket became EMERGENCY with 2 reports.
+
+---
+
+## v1.21-talk-to-a-person - When the agent can't help, a person can
+
+**What was missing (found in the Nov 13 audit):** when the handbook didn't have the answer, the agent said
+"email HOUSING@avila.edu" and the conversation stopped there. "Can I talk to a real person?" got "Hey! What
+can I help with?".
+
+**What:**
+- **🙋 Talk to a person** is in the main menu. Typing it works too ("can I talk to a real person?", "speak
+  with someone"), and in any language: the AI now flags `wants_person` ("¿Puedo hablar con una persona...?").
+- The student's question goes to housing staff as a request (**Q-1001**), saved in the same database (new
+  `handoffs` table) and emailed to staff. A question in another language is saved in English too, with the
+  student's own words.
+- If the message is only "talk to a person", the agent sends the question it just answered (or couldn't),
+  or asks "What would you like to ask housing staff?".
+- **Staff answer on the dashboard:** a live "🙋 1 student waiting for a person" alert at the top, and a
+  **Questions for a person** box to type the answer. The answer appears in the student's chat by itself
+  ("💬 Housing staff answered your question (Q-1001): ..."), the same way ticket updates do.
+- When the handbook has nothing, or the answer says "not sure", **Talk to a person** is the first button,
+  and one tap sends that exact question.
+- Danger words still come first: "I need to talk to someone, there's smoke!" gets the safety message.
+- Reset demo adds one clearly-fake waiting question, so the feature shows in a demo.
+
+**What broke along the way:** the first version only understood English requests, so the Spanish one
+was answered as a handbook question. Fix: the AI's `wants_person` flag (the English phrases stay as a
+backup for when the AI is down).
+
+**Tested:** 101 offline checks (11 new). With the real AI (temporary database, no emails): "Can I talk to a
+real person?" -> asks -> Q-1001; a Spanish request -> Spanish reply, saved in English + Spanish; "Is there a
+24-hour gym in Wylie?" -> "not sure" -> one tap -> Q-1003. In the practice copy: the waiting alert and the
+answer box show on the dashboard.

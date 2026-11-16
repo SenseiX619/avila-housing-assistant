@@ -61,6 +61,7 @@ Reply with ONLY a JSON object in exactly this shape:
     "urgency": "emergency | urgent | normal | null"
   }},
   "ticket_id": "a ticket number like AV-1003 if the student mentions one, else null",
+  "wants_person": false,
   "cancel": false
 }}
 
@@ -84,6 +85,7 @@ Ticket rules:
 - urgency: emergency (see above); urgent = no heat, no hot water, broken lock, toilet not working,
   AC out in hot weather, active leak; normal = everything else.
 - Set "cancel": true only if the student says to cancel or forget the request.
+- Set "wants_person": true if the student asks to talk to a real person, a human, staff or their RA (any language).
 - Always write search_query and issue in English, even if the student writes in another language.
 """
 
@@ -173,7 +175,12 @@ SHORT_HELLO = "Hey! What can I help with?"
 
 # ---------- Quick replies: buttons under each answer, so students can tap instead of typing ----------
 REPAIR, QUESTION, MY_TICKET, EMERGENCY = "🔧 Report a repair", "❓ Ask a question", "🎫 Check my ticket", "🚨 Emergency"
-MAIN_MENU = [REPAIR, QUESTION, MY_TICKET, EMERGENCY]
+HUMAN = "🙋 Talk to a person"
+MAIN_MENU = [REPAIR, QUESTION, MY_TICKET, EMERGENCY, HUMAN]
+# "Can I talk to a real person?", "I want to speak with someone", "human please"
+HUMAN_PATTERN = re.compile(
+    r"\b(talk|speak|chat)\w*\b.{0,20}\b(to|with)\b.{0,15}\b(person|human|someone|somebody|staff|people|agent|"
+    r"representative|RA)\b|\b(real|actual|live) (person|human)\b|\bhuman(,)? please\b", re.I)
 # Button -> (category, issue saved on the ticket, urgency). Urgency follows the ANALYZE_PROMPT rules.
 ISSUE_BUTTONS = {
     "🔥 No heat": ("Heating/AC", "No heat", "emergency"),               # can't wait (see CANT_WAIT)
@@ -194,6 +201,9 @@ ROOM_ONLY = re.compile(r"^\W*(?:room|rm)?\W*([a-z]?\d{1,4}[a-z]?)\W*$", re.I)   
 HALL_AND_ROOM = re.compile(rf"^\W*({'|'.join(map(re.escape, config.BUILDINGS))}),? room (\w+)\W*$", re.I)
 CALL_SAFETY = ("📞 Call Campus Safety", "tel:+1" + re.sub(r"\D", "", config.CAMPUS_SAFETY_PHONE))
 CALL_911 = ("📞 Call 911", "tel:911")
+
+BUTTONS = {*MAIN_MENU, *ISSUE_BUTTONS, SOMETHING_ELSE, FIXED_YES, FIXED_NO, *config.BUILDINGS}
+ASK_FOR_QUESTION = "Sure. What would you like to ask housing staff? Type it (or use the mic) and I'll send it to them."
 
 LOG_FILE = config.DATA_DIR / "conversation_log.jsonl"
 
@@ -235,6 +245,7 @@ def _tidy(analysis: dict) -> dict:
             "search_query": clean(analysis.get("search_query")),
             "ticket": {k: clean(ticket.get(k)) for k in TICKET_FIELDS},
             "ticket_id": clean(analysis.get("ticket_id")),
+            "wants_person": analysis.get("wants_person") is True,
             "cancel": analysis.get("cancel") is True}
 
 
@@ -284,6 +295,7 @@ class HousingAgent:
         state.setdefault("history", [])
         state.setdefault("my_tickets", [])
         state.setdefault("seen", {})                  # tickets this chat watches -> the status we last told them
+        state.setdefault("questions", {})             # "Talk to a person" requests -> Waiting / Answered
         analysis = {}
         try:
             reply = self._quick_reply(message, state, channel)
@@ -299,6 +311,10 @@ class HousingAgent:
                 f"Sorry, I'm having trouble right now. For housing help, email {config.HOUSING_EMAIL}. "
                 f"For anything urgent, call Campus Safety at {config.CAMPUS_SAFETY_PHONE}.",
                 kind="error", options=MAIN_MENU)
+            if message not in BUTTONS:
+                state["last_question"] = message      # unanswered: one tap on "Talk to a person" sends it
+        if reply.kind not in ("answer", "error"):
+            state.pop("last_question", None)          # only the latest question counts
 
         state["history"] += [{"role": "user", "content": message},
                              {"role": "assistant", "content": reply.text}]
@@ -312,6 +328,13 @@ class HousingAgent:
         instantly. Anything else returns None and goes through ANALYZE + ACT."""
         language = state.get("language", "English")
         draft = state.get("draft") or {}
+        if message in BUTTONS:
+            state.pop("handoff_pending", None)        # tapped something else: they no longer want to type a question
+        if message == HUMAN:
+            if state.get("last_question"):
+                return self._send_to_staff(state["last_question"], language, state, channel)
+            state["handoff_pending"] = True
+            return AgentReply(self._say(ASK_FOR_QUESTION, language), kind="ask_details")
         if message == REPAIR:
             return AgentReply(self._say("What's the problem? Tap one, or tell me in your own words.", language),
                               kind="ask_details", options=[*ISSUE_BUTTONS, SOMETHING_ELSE])
@@ -392,6 +415,7 @@ class HousingAgent:
         """Plain Python decides what to do with what the AI understood."""
         language = analysis.get("language") or "English"
         state["language"] = language                             # tapped buttons answer in it too
+        handoff_pending = state.pop("handoff_pending", False)    # we asked "what would you like to ask staff?"
         intent = str(analysis.get("intent") or "question").strip().lower()
         details = analysis.get("ticket") or {}
 
@@ -430,6 +454,10 @@ class HousingAgent:
                                options=MAIN_MENU)
         elif intent == "emergency" or danger:
             reply = self._handle_emergency(message, details, language, state, channel)
+        elif handoff_pending and intent not in ("maintenance", "ticket_status"):
+            reply = self._send_to_staff(message, language, state, channel)       # the question we asked them for
+        elif HUMAN_PATTERN.search(message) or analysis.get("wants_person"):      # any language, via the AI
+            reply = self._handle_human_request(message, language, state, channel)
         elif intent == "ticket_status":
             reply = self._handle_status(analysis.get("ticket_id") or message, language, state)
         elif intent == "maintenance" or (state.get("draft") and any(details.get(k) for k in ("building", "room"))):
@@ -722,6 +750,39 @@ class HousingAgent:
             self._email(ticket, update="REOPENED - the student says it's still not fixed")
         return AgentReply(self._say(text, language), kind="status", ticket=ticket, options=[MY_TICKET, REPAIR, QUESTION])
 
+    # ---------- "Talk to a person": the handoff to housing staff ----------
+    def _handle_human_request(self, message: str, language: str, state: dict, channel: str) -> AgentReply:
+        """They typed "can I talk to a person?". If the message has a real question in it, send that; else the
+        question we just answered (or couldn't); else ask what to send."""
+        rest = HUMAN_PATTERN.sub(" ", message)
+        if len(re.findall(r"[^\W\d_]{3,}", rest)) >= 5:                     # "...about my roommate conflict"
+            return self._send_to_staff(message, language, state, channel)
+        if state.get("last_question"):
+            return self._send_to_staff(state["last_question"], language, state, channel)
+        state["handoff_pending"] = True
+        return AgentReply(self._say(ASK_FOR_QUESTION, language), kind="ask_details")
+
+    def _send_to_staff(self, question: str, language: str, state: dict, channel: str) -> AgentReply:
+        """Save the question for staff (Q-1001), email them, and watch for their answer (ticket_updates)."""
+        for_staff = question
+        if language and not language.lower().startswith("english"):
+            try:                                        # staff read English; keep the student's own words too
+                english = llm.chat([{"role": "system", "content": TRANSLATE_PROMPT.format(language="English")},
+                                    {"role": "user", "content": question}], temperature=0.1)
+                for_staff = f"{english.strip()} (in {language}: {question})"
+            except Exception:
+                pass
+        handoff = self.tickets.create_handoff(for_staff, language, channel)
+        code = handoff["code"]
+        state["questions"][code] = "Waiting"
+        state.pop("last_question", None)
+        notify.send_handoff_email(handoff, on_done=lambda result: write_log(
+            {"event": "handoff_email", "request": code, "to": config.TICKET_EMAIL_TO, "result": result}))
+        text = (f"I've sent your question to housing staff (request {code}). Keep this chat open and their answer "
+                f"will appear right here. You can also email {config.HOUSING_EMAIL}. If it's urgent, call Campus "
+                f"Safety at {config.CAMPUS_SAFETY_PHONE}.")
+        return AgentReply(self._say(text, language), kind="handoff", options=[REPAIR, QUESTION, MY_TICKET])
+
     def ticket_updates(self, state: dict) -> list[AgentReply]:
         """Did staff change a ticket this student reported or asked about? Then say so in the chat - the loop
         back to the student. The chat page checks every few seconds; no AI call (unless we translate)."""
@@ -734,14 +795,25 @@ class HousingAgent:
                 state.setdefault("history", []).append({"role": "assistant", "content": reply.text})
                 write_log({"event": "status_update_shown", "ticket": code, "status": ticket["status"]})
                 replies.append(reply)
+        for code, last_told in list(state.get("questions", {}).items()):      # staff answered a question
+            handoff = self.tickets.get_handoff(code)
+            if handoff and handoff["status"] == "Answered" and last_told != "Answered":
+                state["questions"][code] = "Answered"
+                text = f"💬 Housing staff answered your question ({code}): {handoff['answer']}"
+                reply = AgentReply(self._say(text, state.get("language", "English")), kind="status",
+                                   options=[QUESTION, HUMAN, REPAIR])
+                state.setdefault("history", []).append({"role": "assistant", "content": reply.text})
+                write_log({"event": "staff_answer_shown", "request": code})
+                replies.append(reply)
         return replies
 
     def _answer_question(self, message: str, query: str, language: str, state: dict) -> AgentReply:
+        state["last_question"] = message               # "Talk to a person" right after sends this question
         hits = self.retriever.search(query, k=4)
         if not hits:
-            text = (f"I couldn't find that in the Housing Handbook. Please email {config.HOUSING_EMAIL} "
-                    "and the Residential Life team will help you.")
-            return AgentReply(self._say(text, language), options=[QUESTION, REPAIR, MY_TICKET])
+            text = (f"I couldn't find that in the Housing Handbook. Tap \"{HUMAN}\" and I'll send your question "
+                    f"to housing staff, or email {config.HOUSING_EMAIL}.")
+            return AgentReply(self._say(text, language), options=[HUMAN, QUESTION, REPAIR])
 
         excerpts = "\n\n".join(f"[{h['source']}] (page {h['page']})\n{h['text']}" for h in hits)
         messages = [{"role": "system", "content": ANSWER_PROMPT.format(language=language)}]
@@ -752,7 +824,10 @@ class HousingAgent:
         # List the pages the answer actually cites; if it cites none, every page we gave it.
         cited = {int(p) for p in re.findall(r"p\.\s?(\d+)", text)} & {h["page"] for h in hits}
         sources = sorted(cited or {h["page"] for h in hits})
-        return AgentReply(text, kind="answer", sources=sources, options=[QUESTION, REPAIR, MY_TICKET])
+        # The answer says it doesn't know (or points to the housing email): offer a person first.
+        unsure = config.HOUSING_EMAIL.lower() in text.lower() or re.search(r"not sure|doesn['’]?t say", text, re.I)
+        options = [HUMAN, QUESTION, REPAIR] if unsure else [QUESTION, REPAIR, MY_TICKET]
+        return AgentReply(text, kind="answer", sources=sources, options=options)
 
     # ---------- helpers ----------
     def _say(self, english_text: str, language: str) -> str:

@@ -748,6 +748,84 @@ class AgentFlows(unittest.TestCase):
                          "a new fixture (toilet) is a new problem, even with sink in it")
         self.assertTrue(same("leaking bathroom sink", "Plumbing", "sink dripping", "Plumbing"))
 
+    # ---------- step 7: "Talk to a person" ----------
+    def test_talk_to_a_person_asks_then_sends(self):
+        """'Can I talk to a real person?' -> what should I send? -> the question goes to staff as Q-1001 + email"""
+        with mock.patch("llm.chat_json", return_value=ai_said("smalltalk")):
+            ask = self.say("Can I talk to a real person?")
+        self.assertEqual(ask.text, agent.ASK_FOR_QUESTION)
+        with mock.patch("llm.chat_json", return_value=ai_said("question")), \
+             mock.patch.object(notify, "send_handoff_email") as send:
+            sent = self.say("Can I paint an accent wall in my room?")
+        self.assertEqual(sent.kind, "handoff")
+        handoff = self.store.handoffs()[0]
+        self.assertRegex(handoff["code"], r"^Q-\d{4}$")
+        self.assertEqual((handoff["question"], handoff["status"]), ("Can I paint an accent wall in my room?", "Waiting"))
+        self.assertIn(handoff["code"], sent.text)
+        self.assertIn(config.CAMPUS_SAFETY_PHONE, sent.text)
+        self.assertEqual(send.call_args.args[0]["code"], handoff["code"])
+
+    def test_handbook_cant_answer_offers_a_person(self):
+        """nothing in the handbook -> 'Talk to a person' is the first button; one tap sends THAT question, no AI"""
+        with mock.patch("llm.chat_json", return_value=ai_said("question")), \
+             mock.patch.object(self.agent.retriever, "search", return_value=[]):
+            reply = self.say("Can I bring my own mini fridge from home?")
+        self.assertEqual(reply.options[0], agent.HUMAN)
+        json_off, chat_off = self.no_ai()
+        with json_off, chat_off:
+            sent = self.say(agent.HUMAN)
+        self.assertEqual(sent.kind, "handoff")
+        self.assertEqual(self.store.handoffs()[0]["question"], "Can I bring my own mini fridge from home?")
+
+    def test_unsure_answer_offers_a_person(self):
+        with mock.patch("llm.chat_json", return_value=ai_said("question")), \
+             mock.patch("llm.chat", return_value="I'm not sure - please email HOUSING@avila.edu."):
+            reply = self.say("Can I bring a hamster?")
+        self.assertEqual(reply.options[0], agent.HUMAN)
+
+    def test_question_in_the_same_message_is_sent(self):
+        with mock.patch("llm.chat_json", return_value=ai_said("question")):
+            sent = self.say("Can I talk to my RA about a roommate conflict that keeps getting worse?")
+        self.assertEqual(sent.kind, "handoff")
+        self.assertIn("roommate conflict", self.store.handoffs()[0]["question"])
+
+    def test_danger_beats_talk_to_a_person(self):
+        reply = self.say("I need to talk to someone, there's smoke in my room!")
+        self.assertEqual(reply.kind, "emergency")
+        self.assertEqual(self.store.handoffs(), [])
+
+    def test_tapping_another_button_cancels_the_question(self):
+        self.say(agent.HUMAN)
+        self.assertTrue(self.state.get("handoff_pending"))
+        self.assertIn("🔥 No heat", self.say(agent.REPAIR).options)
+        self.assertFalse(self.state.get("handoff_pending"))
+        self.assertEqual(self.store.handoffs(), [])
+
+    def test_staff_answer_reaches_the_chat(self):
+        """staff answer Q-1001 on the dashboard -> 'Housing staff answered your question' in that chat, once"""
+        with mock.patch("llm.chat_json", return_value=ai_said("question")):
+            self.say("Can I talk to my RA about a roommate conflict that keeps getting worse?")
+        self.assertEqual(self.agent.ticket_updates(self.state), [])
+        code = self.store.handoffs()[0]["code"]
+        self.store.answer_handoff(code, "Yes - your RA can meet you tonight at 7 in the Wylie lobby.")
+        updates = self.agent.ticket_updates(self.state)
+        self.assertEqual(len(updates), 1)
+        self.assertIn(f"Housing staff answered your question ({code}): Yes - your RA can meet you", updates[0].text)
+        self.assertEqual(self.agent.ticket_updates(self.state), [], "told once")
+
+    def test_question_in_another_language_is_sent_in_english_too(self):
+        with mock.patch("llm.chat_json", return_value=dict(ai_said("question", language="Spanish"), wants_person=True)):
+            self.say("¿Puedo hablar con una persona real sobre un conflicto con mi compañera de cuarto?")
+        question = self.store.handoffs()[0]["question"]
+        self.assertTrue(question.startswith("[FAKE TRANSLATION]"), question)
+        self.assertIn("(in Spanish: ¿Puedo hablar", question)
+
+    def test_handoff_email_content(self):
+        handoff = self.store.create_handoff("Can I paint an accent wall?")
+        email = notify.handoff_email(handoff)
+        self.assertIn(handoff["code"], email["Subject"])
+        self.assertIn("Can I paint an accent wall?", email.get_content())
+
     def test_ticket_email_content_and_sending(self):
         """the email says what, where, how urgent and the deadline, and goes to TICKET_EMAIL_TO"""
         ticket = self.store.create("Thompson Hall", "1214", "Heater not working", "Heating/AC", "urgent",
@@ -963,6 +1041,28 @@ class Screens(unittest.TestCase):
         code = store.create("Wylie Hall", "1450", "Sink leaking", "Plumbing")["code"]
         store.add_report(code, "normal", "Our sink is leaking")
         self.assertIn("Sink leaking · 2 reports", self.dashboard().dataframe[0].value["Issue"].tolist())
+
+    def test_answer_a_question_on_the_dashboard(self):
+        """on screen: Reset demo -> 1 sample question waiting (warning at the top); answer it -> sent"""
+        TicketStore().reset_demo()
+        board = self.dashboard()
+        self.assertTrue(any("1 student waiting for a person" in w.value for w in board.warning))
+        board.text_area[0].input("Yes, with your RA's OK - paint it back before move-out.")
+        next(b for b in board.button if b.label == "Send answer").click().run()
+        self.assertFalse(board.exception, board.exception)
+        self.assertEqual(TicketStore().handoffs()[0]["status"], "Answered")
+        self.assertTrue(any("Answer sent for Q-1001" in s.value for s in board.success), "Reset demo restarts Q-1001")
+        self.assertFalse(any("waiting for a person" in w.value for w in board.warning))
+
+    def test_staff_answer_shows_in_the_chat_on_screen(self):
+        at = self.chat("Can I talk to my RA about a roommate conflict that keeps getting worse?")
+        code = TicketStore().handoffs()[0]["code"]
+        self.assertIn(code, self.last_reply(at))
+        TicketStore().answer_handoff(code, "Your RA will meet you tonight at 7.")
+        at.run()                                       # what the 5-second check does by itself
+        self.assertFalse(at.exception, at.exception)
+        self.assertIn(f"Housing staff answered your question ({code}): Your RA will meet you tonight at 7.",
+                      self.last_reply(at))
 
     def test_emergency_alert_on_the_dashboard(self):
         """(d) on screen: an emergency shows as a red alert at the top of the dashboard"""

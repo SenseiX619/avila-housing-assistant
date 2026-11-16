@@ -53,6 +53,19 @@ class TicketStore:
                 if column not in have:
                     db.execute(f"ALTER TABLE tickets ADD COLUMN {column} {kind}")
             db.execute("UPDATE tickets SET status = 'Submitted' WHERE status = 'Open'")
+            # Questions a student wants a person to answer ("Talk to a person"), numbered Q-1001, Q-1002...
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS handoffs (
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    code        TEXT UNIQUE,
+                    created_at  TEXT NOT NULL,
+                    question    TEXT NOT NULL,
+                    language    TEXT,
+                    channel     TEXT,
+                    status      TEXT DEFAULT 'Waiting',
+                    answer      TEXT,
+                    answered_at TEXT
+                )""")
 
     def _connect(self):
         # a fresh connection per call keeps it safe with Streamlit's threads
@@ -133,6 +146,34 @@ class TicketStore:
                        (building, room, datetime.now().isoformat(timespec="seconds"), code))
         return self.get(code)
 
+    # ---------- "Talk to a person": questions for housing staff ----------
+    def create_handoff(self, question: str, language: str = "English", channel: str = "text",
+                       created_at: datetime | None = None) -> dict:
+        now = (created_at or datetime.now()).isoformat(timespec="seconds")
+        with self._connect() as db:
+            cur = db.execute("INSERT INTO handoffs (created_at, question, language, channel) VALUES (?, ?, ?, ?)",
+                             (now, question, language, channel))
+            code = f"Q-{1000 + cur.lastrowid}"
+            db.execute("UPDATE handoffs SET code = ? WHERE id = ?", (code, cur.lastrowid))
+        return self.get_handoff(code)
+
+    def get_handoff(self, code: str) -> dict | None:
+        with self._connect() as db:
+            row = db.execute("SELECT * FROM handoffs WHERE code = ?", (code.upper(),)).fetchone()
+        return dict(row) if row else None
+
+    def handoffs(self, waiting_only: bool = False) -> list[dict]:
+        where = "WHERE status = 'Waiting' " if waiting_only else ""
+        with self._connect() as db:
+            rows = db.execute(f"SELECT * FROM handoffs {where}ORDER BY id").fetchall()
+        return [dict(r) for r in rows]
+
+    def answer_handoff(self, code: str, answer: str) -> dict | None:
+        with self._connect() as db:
+            db.execute("UPDATE handoffs SET status = 'Answered', answer = ?, answered_at = ? WHERE code = ?",
+                       (answer.strip(), datetime.now().isoformat(timespec="seconds"), code.upper()))
+        return self.get_handoff(code)
+
     def find_open_duplicate(self, building: str, room: str, issue: str, category: str | None) -> dict | None:
         """An open ticket for the same problem in the same room (a roommate, or the same student again)."""
         new = {"issue": issue, "category": category}
@@ -199,14 +240,19 @@ class TicketStore:
     def clear(self) -> None:
         with self._connect() as db:
             db.execute("DELETE FROM tickets")
+            db.execute("DELETE FROM handoffs")
 
     def reset_demo(self) -> None:
         """Start a demo fresh: delete every ticket, number from AV-1001 again, load the sample tickets.
         (Deleting tickets alone doesn't reset the numbering - SQLite remembers the last ID.)"""
         with self._connect() as db:
             db.execute("DELETE FROM tickets")
-            db.execute("DELETE FROM sqlite_sequence WHERE name = 'tickets'")
+            db.execute("DELETE FROM handoffs")
+            db.execute("DELETE FROM sqlite_sequence WHERE name IN ('tickets', 'handoffs')")
         self.load_sample_tickets()
+        # One clearly-fake question waiting for a person, so the "Talk to a person" part shows in a demo.
+        self.create_handoff("[SAMPLE] Can I paint an accent wall in my room if I paint it back before move-out?",
+                            channel="sample", created_at=datetime.now() - timedelta(hours=2))
 
 
 # Words that don't tell two problems apart ("not working", "my room"...). The rest are compared by their first

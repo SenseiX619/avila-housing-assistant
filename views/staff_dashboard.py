@@ -94,6 +94,10 @@ def live_board() -> None:
     emergencies = [t for t in open_tickets if t["urgency"] == "emergency"]
     for t in emergencies:
         st.error(f"🚨 **EMERGENCY {t['code']}** - {t['issue']} - {t['building']}, room {t['room']}")
+    waiting = store.handoffs(waiting_only=True)
+    if waiting:
+        st.warning(f"🙋 **{len(waiting)} student{'s' if len(waiting) > 1 else ''} waiting for a person** - "
+                   f"answer below, under Questions for a person.")
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Open tickets", len(open_tickets))
@@ -160,6 +164,28 @@ def live_board() -> None:
 
 
 live_board()
+
+st.divider()
+st.subheader("🙋 Questions for a person")
+# Students who tapped "Talk to a person". The answer typed here appears in that student's chat by itself.
+waiting = store.handoffs(waiting_only=True)
+if not waiting:
+    st.caption("No students are waiting for a person right now.")
+else:
+    by_question = {f"{h['code']} - {h['question'][:70]}": h for h in waiting}
+    handoff = by_question[st.selectbox("Question", list(by_question))]
+    asked = datetime.fromisoformat(handoff["created_at"]).strftime("%b %d, %I:%M %p")
+    st.info(f"**{handoff['code']}** · asked {asked} · {handoff['language']}\n\n{handoff['question']}")
+    answer = st.text_area("Your answer (it appears in the student's chat)", key=f"answer_{handoff['code']}")
+    if st.button("Send answer", type="primary", key="send_answer"):
+        if answer.strip():
+            store.answer_handoff(handoff["code"], answer)
+            st.session_state.answer_sent = (f"Answer sent for {handoff['code']}. If the student's chat is open, "
+                                            f"they see it there.")
+            st.rerun()
+        st.warning("Type an answer first.")
+if sent := st.session_state.pop("answer_sent", None):
+    st.success(sent)
 
 st.divider()
 st.subheader("Update a ticket")

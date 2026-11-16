@@ -82,6 +82,35 @@ def send_ticket_email(ticket: dict, on_done=None, background: bool = True, updat
     return True
 
 
+def handoff_email(handoff: dict) -> EmailMessage:
+    """The email staff receive when a student asks to talk to a person."""
+    asked = datetime.fromisoformat(handoff["created_at"]).strftime("%b %d, %I:%M %p")
+    msg = EmailMessage()
+    msg["Subject"] = f"[Avila Housing] {handoff['code']} · A student wants to talk to a person"
+    msg["From"] = f"Avila Housing Assistant <{config.SMTP_USER}>"
+    msg["To"] = config.TICKET_EMAIL_TO
+    msg.set_content(f"""A student asked the Avila Housing Assistant for a person.
+
+Request:   {handoff['code']}
+Asked:     {asked}, by {handoff['channel']}, in {handoff['language']}
+
+Their question:
+"{handoff['question']}"
+
+Answer it on the Staff Dashboard (Questions for a person): the answer appears in the student's chat.
+(Prototype by Avila AI students - test request.)
+""")
+    return msg
+
+
+def send_handoff_email(handoff: dict, on_done=None) -> bool:
+    """Email staff a new "Talk to a person" request, in the background. False if email isn't set up."""
+    if not is_configured():
+        return False
+    threading.Thread(target=_send, args=(handoff_email(handoff), on_done), daemon=True).start()
+    return True
+
+
 if __name__ == "__main__":
     # python notify.py  ->  sends ONE test email right now, to check the .env settings.
     if not is_configured():

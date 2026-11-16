@@ -108,6 +108,8 @@ The dashboard asks for the staff password (`STAFF_PASSWORD` in `.env`): type it 
    pick that ticket, set **Resolved** and **Assigned to: Plumbing**, click Save. Within 5 seconds the chat says
    "📬 Update: ... is now Resolved. Did that fix it?". Tap **✅ Yes**: the dashboard flag becomes
    **✅ Confirmed fixed** (turn on "Show resolved tickets"). Tapping **❌ No** reopens it instead.
+8. **A person when it matters:** in the chat, tap **🙋 Talk to a person** and type a question. On the dashboard,
+   under **🙋 Questions for a person**, type an answer and click **Send answer**: it appears in the chat.
 
 **Before you present:** run `run.bat` 30 minutes early, test the mic in the room, and keep
 a screen recording of the demo as a backup. In the browser, click the mic icon in the address
@@ -178,6 +180,7 @@ Every step is a Git tag. Read `BUILD_LOG.md` alongside:
 | `v1.18-closed-loop` | Submitted -> Assigned -> In Progress -> Resolved; the student's chat updates by itself and asks "Did that fix it?" |
 | `v1.19-summary` | "How we're doing": response time, time to fix, fixed on time, confirmed; requests by building |
 | `v1.20-no-duplicates` | The same problem reported twice joins the open ticket ("2 reports") instead of a second one |
+| `v1.21-talk-to-a-person` | "Talk to a person": the question goes to staff (Q-1001), their answer appears in the chat |
 
 ```
 git checkout v0.3-qa-chat          # see the app as it was at that step
