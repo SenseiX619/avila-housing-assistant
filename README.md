@@ -83,32 +83,37 @@ sidebar points to that link, so the audience can scan it, and their tickets appe
 laptop's dashboard. Keep that window open; the link changes every time it starts.
 (One-time install: `winget install Cloudflare.cloudflared`.)
 
-## Demo script (Nov 4)
+## Demo script (Dec 9)
 
-Open the **Student Assistant** on one screen and the **Staff Dashboard** on the other
-(in the dashboard's sidebar click **🔄 Reset demo** -> **Yes, reset the demo** first: 12 sample tickets with a history, numbered AV-1001 to AV-1012).
-The dashboard asks for the staff password (`STAFF_PASSWORD` in `.env`): type it before you present.
+Open the **Student Assistant** on one screen and the **Staff Dashboard** on the other. On the dashboard, type the
+staff password (`STAFF_PASSWORD` in `.env`), then in its sidebar click **🔄 Reset demo** -> **Yes, reset the demo**:
+12 sample tickets with a history (AV-1001 to AV-1012) and one sample question. The blue "🧪 Sample data" note
+says so on screen: tell the room the numbers are made up and a pilot would give real ones.
 
-1. **Question:** "Can my friend stay over this weekend?" -> answer + handbook page.
-2. **Voice repair:** tap the mic, say *"The heater in my room isn't working,"* tap stop.
-   The agent asks where: tap the hall button, then say or type the room. No heat can't wait, so it's an
-   **EMERGENCY repair**: red on the dashboard, and the student is told to contact the RA on duty after hours.
-   **Switch screens: the ticket is already on the dashboard.**
-3. **Tap-only repair:** 🔧 Report a repair -> 💧 Leak / plumbing -> Wylie Hall -> type 1408.
+The demo rooms below have **no sample ticket**, so each repair is a new ticket (not "already reported").
+
+1. **Question (no sign-in needed):** "Can my friend stay over this weekend?" -> answer + handbook page.
+2. **Sign in:** open **👤 Sign in** at the top and tap the demo student **Maria · Thompson 1230**.
+   "Repairs need a name so staff know who to contact. In the pilot this is the Avila Microsoft login."
+3. **Voice repair:** tap the mic, say *"The heater in my room isn't working,"* tap stop.
+   Tap **📍 Thompson Hall, room 1230** (her room, one tap). No heat can't wait, so it's an **EMERGENCY repair**:
+   red on the dashboard, and the student is told to contact the RA on duty after hours.
+   **Switch screens: the ticket is already on the dashboard, with Maria's name.**
+4. **Tap-only repair:** 🔧 Report a repair -> 💧 Leak / plumbing -> 📍 Thompson Hall, room 1230.
    No sentences to type, no waiting for the AI.
-4. **Another language:** type *"Mi baño tiene una fuga en Wylie 1408"*. The answer comes
+5. **Another language:** type *"Mi baño tiene una fuga en Wylie 1470"*. The answer comes
    back in Spanish; the ticket is saved in English for staff.
-5. **Safety:** "There's smoke coming from an outlet in Buchanan 502" -> call Campus Safety first
+6. **Safety:** "There's smoke coming from an outlet in Buchanan 530" -> call Campus Safety first
    (911 if there are flames or someone is hurt), then an EMERGENCY ticket, with call buttons.
-   A real fire ("There's a fire in my kitchen") gets 911 first.
-6. **Dashboard:** point at the ⚠️ OVERDUE flags: "these are Avila's own deadlines from the handbook."
+   A real fire ("There's a fire in my kitchen") gets 911 first. Point out: emergencies never need a sign-in.
+7. **Dashboard:** point at the ⚠️ OVERDUE flags: "these are Avila's own deadlines from the handbook."
    Then the **How we're doing** row: average response time, average time to fix, how many were fixed on
    time, and how many students confirmed the fix. The chart shows requests per hall, open and resolved.
-7. **Closing the loop:** keep the student chat from step 3 open. On the dashboard, under **Update a ticket**,
-   pick that ticket, set **Resolved** and **Assigned to: Plumbing**, click Save. Within 5 seconds the chat says
-   "📬 Update: ... is now Resolved. Did that fix it?". Tap **✅ Yes**: the dashboard flag becomes
+8. **Closing the loop:** keep the student chat open. On the dashboard, under **Update a ticket**, pick the
+   leak ticket from step 4, set **Resolved** and **Assigned to: Plumbing**, click Save. Within 5 seconds the chat
+   says "📬 Update: ... is now Resolved. Did that fix it?". Tap **✅ Yes**: the dashboard flag becomes
    **✅ Confirmed fixed** (turn on "Show resolved tickets"). Tapping **❌ No** reopens it instead.
-8. **A person when it matters:** in the chat, tap **🙋 Talk to a person** and type a question. On the dashboard,
+9. **A person when it matters:** in the chat, tap **🙋 Talk to a person** and type a question. On the dashboard,
    under **🙋 Questions for a person**, type an answer and click **Send answer**: it appears in the chat.
 
 **Before you present:** run `run.bat` 30 minutes early, test the mic in the room, and keep
@@ -189,6 +194,7 @@ Every step is a Git tag. Read `BUILD_LOG.md` alongside:
 | `v1.20-no-duplicates` | The same problem reported twice joins the open ticket ("2 reports") instead of a second one |
 | `v1.21-talk-to-a-person` | "Talk to a person": the question goes to staff (Q-1001), their answer appears in the chat |
 | `v1.22-safety-nets` | Failed staff emails show on the dashboard with a Retry button; Reset demo backs up first |
+| `v1.23-sign-in` | Students sign in (name + Avila email, demo students) to report repairs; Sample data label |
 
 ```
 git checkout v0.3-qa-chat          # see the app as it was at that step

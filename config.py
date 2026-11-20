@@ -41,6 +41,18 @@ HOUSING_EMAIL = "HOUSING@avila.edu"
 # The staff dashboard flags tickets that pass these deadlines.
 SLA_DAYS = {"emergency": 2, "urgent": 2, "normal": 14}
 
+# Student sign-in (name + Avila email, no password yet: the pilot would use Avila's Microsoft login).
+# Repairs need a signed-in student so staff know who to contact; questions, emergencies and "Talk to a
+# person" never do. Names and emails are never sent to the AI, and the app never emails students.
+STUDENT_EMAIL_DOMAIN = "avila.edu"
+# Made-up students for presentations: one tap signs in. Their rooms have no sample tickets, so a demo
+# repair is always a NEW ticket (not "already reported").
+DEMO_STUDENTS = [
+    {"name": "Maria Garcia", "email": "maria.garcia.demo@avila.edu", "building": "Thompson Hall", "room": "1230"},
+    {"name": "Jordan Lee", "email": "jordan.lee.demo@avila.edu", "building": "Wylie Hall", "room": "1460"},
+    {"name": "Sam Patel", "email": "sam.patel.demo@avila.edu", "building": "Buchanan Hall", "room": "520"},
+]
+
 # Who staff can assign a ticket to on the dashboard. Teams, not real people's names (demo data only).
 ASSIGNEES = ["Maintenance team", "Plumbing", "Electrical", "Heating & AC", "Locksmith", "Custodial",
              "IT / Wi-Fi", "RA on duty"]

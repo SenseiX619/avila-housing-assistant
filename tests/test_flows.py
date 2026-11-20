@@ -61,6 +61,11 @@ def tearDownModule():
     shutil.rmtree(TMP, ignore_errors=True)       # delete the temporary database and log
 
 
+def signed_in(name="Test Student", email="test.student@avila.edu") -> dict:
+    """A chat where this (made-up) student has signed in. Repairs need it; questions and emergencies don't."""
+    return {"student": {"name": name, "email": email, "home": None}}
+
+
 def ai_said(intent, language="English", ticket_id=None, **ticket):
     """A fixed ANALYZE result, so we can check what Python does with it."""
     return {"language": language, "intent": intent, "search_query": "", "ticket": ticket,
@@ -87,7 +92,7 @@ class AgentFlows(unittest.TestCase):
         self.store = TicketStore()
         self.store.clear()
         self.agent = agent.HousingAgent(Retriever(config.KNOWLEDGE_FILE), self.store)
-        self.state = {}                          # one student's conversation memory
+        self.state = signed_in()                 # one student's conversation memory (signed in)
 
     def say(self, message, channel="text"):
         return self.agent.respond(message, self.state, channel=channel)
@@ -700,7 +705,7 @@ class AgentFlows(unittest.TestCase):
         """a roommate (another chat) reports the same leak -> added to that ticket: 2 reports, one update email"""
         with self.sink():
             first = self.say("My sink is leaking, Wylie 1450").ticket
-        roommate = {}
+        roommate = signed_in("Roommate", "roommate@avila.edu")
         with self.sink(issue="Sink is leaking"), mock.patch.object(notify, "send_ticket_email") as send:
             reply = self.agent.respond("Our sink is leaking, Wylie 1450", roommate)
         self.assertEqual(reply.ticket["code"], first["code"])
@@ -729,10 +734,10 @@ class AgentFlows(unittest.TestCase):
         with self.sink(issue="Toilet clogged"):
             toilet = self.say("And my toilet is clogged, Wylie 1450").ticket
         with self.sink(room="1452"):
-            next_door = self.agent.respond("My sink is leaking, Wylie 1452", {}).ticket
+            next_door = self.agent.respond("My sink is leaking, Wylie 1452", signed_in("Next Door", "nd@avila.edu")).ticket
         self.store.update_status(first["code"], "Resolved")
         with self.sink():
-            back_again = self.agent.respond("My sink is leaking again, Wylie 1450", {}).ticket
+            back_again = self.agent.respond("My sink is leaking again, Wylie 1450", signed_in("B", "b@avila.edu")).ticket
         codes = {first["code"], toilet["code"], next_door["code"], back_again["code"]}
         self.assertEqual(len(codes), 4)
 
@@ -870,6 +875,82 @@ class AgentFlows(unittest.TestCase):
             self.store.reset_demo()
         self.assertEqual(len(list(saved.parent.glob("tickets-before-reset-*.db"))), ticket_module.KEEP_BACKUPS)
 
+    # ---------- student sign-in (v1.23) ----------
+    def test_guest_repair_waits_for_sign_in_then_goes_in(self):
+        """a guest reports a leak -> asked to sign in (report kept, no ticket yet); signing in sends it"""
+        guest = {}
+        with mock.patch.object(notify, "send_ticket_email") as send:
+            for message in (agent.REPAIR, "💧 Leak / plumbing", "Wylie Hall"):
+                self.agent.respond(message, guest)
+            waiting = self.agent.respond("1450", guest)
+            self.assertEqual(waiting.kind, "sign_in")
+            self.assertEqual(self.store.all(), [], "no ticket until we know who to contact")
+            send.assert_not_called()
+            replies = self.agent.sign_in(guest, "Maria Garcia", "Maria.Garcia.Demo@avila.edu")
+        self.assertIn("Hi Maria!", replies[0].text)
+        ticket = replies[1].ticket
+        self.assertEqual((ticket["building"], ticket["room"]), ("Wylie Hall", "1450"))
+        self.assertEqual((ticket["student_name"], ticket["student_email"]), ("Maria Garcia", "maria.garcia.demo@avila.edu"))
+        send.assert_called_once()
+
+    def test_guests_can_still_ask_and_get_emergency_help(self):
+        """no sign-in needed for questions, emergencies (smoke, no heat) or a person"""
+        self.assertEqual(self.agent.respond("Can my friend stay over this weekend?", {}).kind, "answer")
+        smoke = self.agent.respond("There's smoke coming from an outlet in Buchanan 520", {})
+        self.assertEqual((smoke.kind, smoke.ticket["urgency"]), ("emergency", "emergency"))
+        self.assertEqual(smoke.ticket["student_name"], None)
+        guest = {}
+        self.agent.respond("My heater isn't working", guest)
+        no_heat = self.agent.respond("Thompson 1230", guest)
+        self.assertEqual((no_heat.kind, no_heat.ticket["urgency"]), ("ticket", "emergency"), "no heat never waits")
+
+    def test_sign_in_brings_back_earlier_tickets(self):
+        """signed in on another device -> 'Check my ticket' finds the ticket made earlier; 'my room' is offered"""
+        with self.sink(room="1460"):
+            code = self.say("My sink is leaking, Wylie 1460").ticket["code"]
+        phone = {}
+        replies = self.agent.sign_in(phone, "Test Student", "TEST.student@avila.edu")
+        self.assertIn("1 open ticket", replies[0].text)
+        self.assertIn(code, self.agent.respond(agent.MY_TICKET, phone).text)
+        self.agent.respond(agent.REPAIR, phone)
+        self.assertEqual(self.agent.respond("🧊 Appliance", phone).options[0], "📍 Wylie Hall, room 1460")
+
+    def test_my_room_button(self):
+        """a demo student's room is one tap: '📍 Thompson Hall, room 1230' -> ticket, zero AI calls"""
+        state = {}
+        self.agent.sign_in(state, "Maria Garcia", "maria.garcia.demo@avila.edu", ("Thompson Hall", "1230"))
+        json_off, chat_off = self.no_ai()
+        with json_off, chat_off:
+            self.agent.respond(agent.REPAIR, state)
+            options = self.agent.respond("💧 Leak / plumbing", state).options
+            self.assertEqual(options[0], "📍 Thompson Hall, room 1230")
+            done = self.agent.respond(options[0], state)
+        self.assertEqual((done.ticket["building"], done.ticket["room"], done.ticket["student_name"]),
+                         ("Thompson Hall", "1230", "Maria Garcia"))
+
+    def test_student_details_never_reach_the_ai(self):
+        """the AI sees the conversation and the repair, never the student's name or email"""
+        sent = []
+        with mock.patch("llm.chat_json", side_effect=lambda messages, problems=None: sent.append(messages)
+                        or ai_said("maintenance", issue="Sink leaking", building="Wylie Hall", room="1460")):
+            self.say("My sink is leaking, Wylie 1460")
+        self.assertNotIn("test.student@avila.edu", str(sent))
+        self.assertNotIn("Test Student", str(sent))
+
+    def test_demo_students_have_free_valid_rooms(self):
+        """demo students' rooms are real and have no sample ticket, so a demo repair is always new"""
+        self.store.reset_demo()
+        taken = {(t["building"], t["room"]) for t in self.store.all()}
+        for demo in config.DEMO_STUDENTS:
+            self.assertEqual(agent.hall_for_room(demo["room"]), demo["building"], demo["name"])
+            self.assertNotIn((demo["building"], demo["room"]), taken, demo["name"])
+            self.assertTrue(demo["email"].endswith("@avila.edu"))
+
+    def test_staff_email_says_who_reported_it(self):
+        ticket = self.store.create("Wylie Hall", "1460", "Sink leaking", student_name="Maria Garcia",
+                                   student_email="maria.garcia.demo@avila.edu")
+        self.assertIn("Reported by: Maria Garcia <maria.garcia.demo@avila.edu>", notify.ticket_email(ticket).get_content())
+
     def test_ticket_email_content_and_sending(self):
         """the email says what, where, how urgent and the deadline, and goes to TICKET_EMAIL_TO"""
         ticket = self.store.create("Thompson Hall", "1214", "Heater not working", "Heating/AC", "urgent",
@@ -936,9 +1017,11 @@ class Screens(unittest.TestCase):
     def setUp(self):
         TicketStore().clear()
 
-    def chat(self, *messages):
+    def chat(self, *messages, sign_in=True):
         at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=60)
         at.run()
+        if sign_in:                                    # one tap on the first demo student
+            at.button(key="demo_student_0").click().run()
         for message in messages:
             at.chat_input[0].set_value(message).run()
         self.assertFalse(at.exception, at.exception)
@@ -1131,6 +1214,38 @@ class Screens(unittest.TestCase):
         next(b for b in board.button if b.label == "Yes, reset the demo").click().run()
         self.assertTrue(any("Backup saved: data/backups/tickets-before-reset-" in s.value for s in board.success))
 
+    def test_sign_in_on_screen(self):
+        """on screen: the emergency line shows before sign-in; a bad email is refused; a demo student signs in"""
+        at = self.chat(sign_in=False)
+        self.assertTrue(any("no sign-in needed" in m.value for m in at.markdown))
+        inputs = {i.label: i for i in at.text_input}
+        inputs["Your name"].input("Maria")
+        inputs["Avila email"].input("maria@gmail.com")
+        next(b for b in at.button if b.label == "Sign in").click().run()
+        self.assertIn("Please use your @avila.edu email.", [e.value for e in at.error])
+        at.button(key="demo_student_1").click().run()
+        self.assertFalse(at.exception, at.exception)
+        self.assertTrue(any("Signed in as **Jordan Lee**" in c.value for c in at.caption))
+        self.assertIn("Hi Jordan! You're signed in.", self.last_reply(at))
+
+    def test_guest_repair_on_screen_opens_sign_in_then_sends(self):
+        at = self.chat(sign_in=False)
+        for tap in [agent.REPAIR, "💧 Leak / plumbing", "Wylie Hall"]:
+            at.pills[0].set_value(tap).run()
+        at.chat_input[0].set_value("1460").run()
+        self.assertIn("please sign in", self.last_reply(at))
+        self.assertEqual(TicketStore().all(), [])
+        at.button(key="demo_student_0").click().run()
+        self.assertFalse(at.exception, at.exception)
+        self.assertIn("🎫 AV-", self.last_reply(at))
+        self.assertEqual(TicketStore().all()[0]["student_name"], "Maria Garcia")
+
+    def test_dashboard_labels_sample_data(self):
+        TicketStore().reset_demo()
+        board = self.dashboard()
+        self.assertTrue(any("Sample data:" in i.value and "12 of these tickets" in i.value for i in board.info))
+        self.assertIn("Sample", board.dataframe[0].value["Student"].tolist())
+
     def test_emergency_alert_on_the_dashboard(self):
         """(d) on screen: an emergency shows as a red alert at the top of the dashboard"""
         self.chat("There's smoke coming from an outlet in Buchanan 502")
@@ -1149,7 +1264,7 @@ class Screens(unittest.TestCase):
         self.assertEqual(len(at.pills), 1, "buttons only under the latest answer")
 
     def record(self, audio: bytes):
-        at = self.chat()
+        at = self.chat(sign_in=False)                  # the mic needs no sign-in
         at.audio_input[0].set_value(("clip.wav", audio, "audio/wav")).run()
         self.assertFalse(at.exception, at.exception)
         return at

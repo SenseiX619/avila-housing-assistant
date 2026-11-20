@@ -19,6 +19,13 @@ def is_configured() -> bool:
     return bool(config.TICKET_EMAIL_TO and config.SMTP_USER and config.SMTP_APP_PASSWORD)
 
 
+def reporter(ticket: dict) -> str:
+    """Who reported it, for staff: "Maria Garcia <maria@avila.edu>", or a guest (only emergencies)."""
+    if ticket.get("student_name"):
+        return f"{ticket['student_name']} <{ticket.get('student_email') or 'no email'}>"
+    return "a guest (not signed in)"
+
+
 def ticket_email(ticket: dict, update: str = "") -> EmailMessage:
     """The email staff receive for one ticket (update = what changed, for a follow-up email)."""
     urgency = ticket["urgency"].upper()
@@ -45,6 +52,7 @@ Issue:     {ticket['issue']}
 Where:     {where}
 Category:  {ticket['category']}
 Reports:   {ticket.get('reports') or 1} student(s)
+Reported by: {reporter(ticket)}
 Reported:  {reported}, by {ticket['channel']}, in {ticket['language']}
 
 The student's own words:

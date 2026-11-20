@@ -15,7 +15,8 @@ import config
 
 COLUMNS = ["id", "code", "created_at", "updated_at", "building", "room", "issue", "category",
            "urgency", "status", "language", "channel", "student_message",
-           "assigned_to", "assigned_at", "resolved_at", "student_feedback", "reports"]
+           "assigned_to", "assigned_at", "resolved_at", "student_feedback", "reports", "email_status",
+           "student_name", "student_email"]
 # A ticket's life: Submitted (the student reported it) -> Assigned (staff gave it to someone) -> In Progress
 # -> Resolved (staff say it's fixed). The student then confirms: student_feedback = "fixed", or "not fixed",
 # which reopens it.
@@ -23,7 +24,8 @@ STATUSES = ["Submitted", "Assigned", "In Progress", "Resolved"]
 # Added later (v1.18, v1.20, v1.22): older databases get them automatically. "reports" = how many students
 # reported it; "email_status" = what happened to the email to staff ("sent" / "failed: ..."; empty = email off).
 NEW_COLUMNS = {"assigned_to": "TEXT", "assigned_at": "TEXT", "resolved_at": "TEXT", "student_feedback": "TEXT",
-               "reports": "INTEGER DEFAULT 1", "email_status": "TEXT"}
+               "reports": "INTEGER DEFAULT 1", "email_status": "TEXT",
+               "student_name": "TEXT", "student_email": "TEXT"}             # who reported it (v1.23 sign-in)
 KEEP_BACKUPS = 10                      # Reset demo keeps this many copies of the database in data/backups
 URGENCY_RANK = {"normal": 0, "urgent": 1, "emergency": 2}
 
@@ -81,7 +83,8 @@ class TicketStore:
         return db
 
     def create(self, building, room, issue, category="Other", urgency="normal",
-               language="English", channel="text", student_message="", created_at=None) -> dict:
+               language="English", channel="text", student_message="", created_at=None,
+               student_name=None, student_email=None) -> dict:
         now = (created_at or datetime.now()).isoformat(timespec="seconds")
         with self._connect() as db:
             cur = db.execute(
@@ -90,13 +93,21 @@ class TicketStore:
                    VALUES (?, ?, ?, ?, ?, ?, ?, 'Submitted', ?, ?, ?)""",
                 (now, now, building, room, issue, category, urgency, language, channel, student_message))
             code = f"AV-{1000 + cur.lastrowid}"          # friendly ID students can say out loud
-            db.execute("UPDATE tickets SET code = ? WHERE id = ?", (code, cur.lastrowid))
+            db.execute("UPDATE tickets SET code = ?, student_name = ?, student_email = ? WHERE id = ?",
+                       (code, student_name, (student_email or "").lower() or None, cur.lastrowid))
         return self.get(code)
 
     def get(self, code: str) -> dict | None:
         with self._connect() as db:
             row = db.execute("SELECT * FROM tickets WHERE code = ?", (code.upper(),)).fetchone()
         return with_deadline(dict(row)) if row else None
+
+    def tickets_for_student(self, email: str) -> list[dict]:
+        """A signed-in student's tickets, oldest first (so "My ticket" finds them on any device)."""
+        with self._connect() as db:
+            rows = db.execute("SELECT * FROM tickets WHERE student_email = ? ORDER BY id",
+                              ((email or "").lower(),)).fetchall()
+        return [with_deadline(dict(r)) for r in rows]
 
     def all(self) -> list[dict]:
         with self._connect() as db:

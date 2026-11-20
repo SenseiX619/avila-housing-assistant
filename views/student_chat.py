@@ -2,6 +2,8 @@
 views/student_chat.py - the student-facing chat screen (voice + text).
 """
 
+import re
+
 import streamlit as st
 
 import config
@@ -19,6 +21,7 @@ st.markdown("""<style>
   .avila-banner h1 {color: #fff; font-size: 1.6rem; margin: 0; padding: 0;}
   .avila-banner p {color: #F2C14E; margin: 4px 0 0 0; font-weight: 600;}
   .sources {font-size: 0.8rem; color: #888;}
+  .safety-line {color: #A93226; font-size: 0.9rem; margin: -4px 0 8px 2px;}
   [data-testid="stMainBlockContainer"] {max-width: 880px;}   /* keep the chat narrow and readable */
 </style>""", unsafe_allow_html=True)
 st.markdown("""<div class="avila-banner">
@@ -43,6 +46,50 @@ if not agent.retriever.ready:
 if "chat" not in st.session_state:
     st.session_state.chat = [{"role": "assistant", "content": GREETING, "options": MAIN_MENU}]
     st.session_state.agent_state = {}
+
+def add_reply(reply) -> None:
+    st.session_state.chat.append({"role": "assistant", "content": reply.text, "sources": reply.sources,
+                                  "ticket": reply.ticket, "options": reply.options, "calls": reply.calls})
+
+
+def sign_in(name: str, email: str, home: tuple | None = None) -> None:
+    for reply in agent.sign_in(st.session_state.agent_state, name, email, home):
+        add_reply(reply)                         # "Hi Maria!" + a repair that was waiting for the sign-in
+    st.session_state.pop("open_sign_in", None)
+    st.rerun()
+
+
+# Phones hide the sidebar, so the emergency numbers are on the page itself - and never behind a sign-in.
+st.markdown(f"<div class='safety-line'>🚨 Emergency? Call 911 or Campus Safety at <b>{config.CAMPUS_SAFETY_PHONE}</b>"
+            f" - no sign-in needed.</div>", unsafe_allow_html=True)
+
+# ---------- Sign-in: needed to report a repair (so staff know who to contact); everything else works without ----------
+student = st.session_state.agent_state.get("student")
+if student:
+    left, right = st.columns([5, 1], vertical_alignment="center")
+    left.caption(f"👤 Signed in as **{student['name']}** ({student['email']})")
+    if right.button("Sign out", key="sign_out"):
+        st.session_state.clear()
+        st.rerun()
+else:
+    with st.expander("👤 Sign in to report a repair and follow your tickets",
+                     expanded=st.session_state.get("open_sign_in", False)):
+        with st.form("sign_in_form", border=False):
+            name = st.text_input("Your name")
+            email = st.text_input("Avila email", placeholder=f"you@{config.STUDENT_EMAIL_DOMAIN}")
+            submitted = st.form_submit_button("Sign in", type="primary")
+        if submitted:
+            if not name.strip():
+                st.error("Please type your name.")
+            elif not re.fullmatch(rf"[^@\s]+@{re.escape(config.STUDENT_EMAIL_DOMAIN)}", email.strip(), re.I):
+                st.error(f"Please use your @{config.STUDENT_EMAIL_DOMAIN} email.")
+            else:
+                sign_in(name, email)
+        st.caption("Demo students (made up, for presentations) - one tap:")
+        for column, (i, demo) in zip(st.columns(len(config.DEMO_STUDENTS)), enumerate(config.DEMO_STUDENTS)):
+            label = f"{demo['name'].split()[0]} · {demo['building'].split()[0]} {demo['room']}"    # short: fits a phone
+            if column.button(label, key=f"demo_student_{i}", width="stretch"):
+                sign_in(demo["name"], demo["email"], (demo["building"], demo["room"]))
 
 with st.sidebar:
     st.subheader("Try asking")
@@ -89,11 +136,6 @@ for i, msg in enumerate(st.session_state.chat):
             choice = st.pills("Quick replies", msg["options"], key=f"options_{i}", label_visibility="collapsed")
             if choice:
                 st.session_state.pending = choice
-
-
-def add_reply(reply) -> None:
-    st.session_state.chat.append({"role": "assistant", "content": reply.text, "sources": reply.sources,
-                                  "ticket": reply.ticket, "options": reply.options, "calls": reply.calls})
 
 
 # The loop back to the student: when staff move one of this chat's tickets along on the dashboard (Assigned,
@@ -148,4 +190,6 @@ if user_text:
     with st.spinner("Thinking..."):
         reply = agent.respond(user_text, st.session_state.agent_state, channel=channel)
     add_reply(reply)
+    if reply.kind == "sign_in":
+        st.session_state.open_sign_in = True     # open the sign-in box for them
     st.rerun()

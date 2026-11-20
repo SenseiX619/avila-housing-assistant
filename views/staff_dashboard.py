@@ -147,13 +147,20 @@ def live_board() -> None:
     c3.metric("⚠️ Overdue", sum(t["overdue"] for t in open_tickets))
     c4.metric("✅ Resolved", len(tickets) - len(open_tickets))
 
+    # Honesty on the projector: sample tickets (Reset demo) are made up, and so are the numbers they make.
+    samples = sum(t["channel"] == "sample" for t in tickets)
+    if samples:
+        st.info(f"🧪 **Sample data:** {samples} of these tickets are made up for this demo (\"Via: Sample\"), "
+                f"and so are the numbers they produce. A pilot would give real ones.")
+
     if not tickets:
         st.info("No tickets yet. Report a repair in the chat, or click 🔄 Reset demo in the sidebar for sample tickets.")
         return
 
     # How we're doing: the numbers leadership asks about. Stat tiles, not charts - each is one number.
     s = summary(tickets)
-    st.caption("**How we're doing** · all tickets, timed from the moment the student reported it")
+    st.caption("**How we're doing** · all tickets, timed from the moment the student reported it"
+               + (" · includes sample tickets" if samples else ""))
     d1, d2, d3, d4 = st.columns(4)
     d1.metric("⏱️ Avg response time", nice_hours(s["avg_assign_hours"]),
               help="From the student's report until a team was assigned")
@@ -175,6 +182,7 @@ def live_board() -> None:
         "Due by": datetime.fromisoformat(t["due_at"]).strftime("%b %d"),
         "Issue": t["issue"] + (f" · {t['reports']} reports" if (t["reports"] or 1) > 1 else ""),
         "Where": f"{t['building']} {t['room']}",
+        "Student": t["student_name"] or ("Sample" if t["channel"] == "sample" else "Guest"),
         "Status": t["status"] + (f" · {t['assigned_to']}" if t["assigned_to"] else ""),
         "Via": t["channel"].title(),
         "Language": t["language"],
@@ -184,7 +192,7 @@ def live_board() -> None:
     st.dataframe(table, hide_index=True, width="stretch", column_config={
         "Ticket": st.column_config.TextColumn(width=75), "Flag": st.column_config.TextColumn(width=145),
         "Due by": st.column_config.TextColumn(width=65), "Issue": st.column_config.TextColumn(width=210),
-        "Where": st.column_config.TextColumn(width=135)})
+        "Where": st.column_config.TextColumn(width=135), "Student": st.column_config.TextColumn(width=110)})
 
     left, right = st.columns(2)
     with left:

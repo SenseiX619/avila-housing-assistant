@@ -29,6 +29,10 @@ not to rebuild it. I'm learning, so explain every change in plain English.
 - Ticket life: Submitted -> Assigned (to a team, config.ASSIGNEES) -> In Progress -> Resolved, with assigned_at /
   resolved_at times. The student's open chat checks its tickets every 5s and shows staff changes by itself;
   Resolved asks "Did that fix it?": yes = confirmed fixed, no = reopened + staff emailed.
+- Student sign-in (v1.23): name + @avila.edu email, or a made-up demo student (config.DEMO_STUDENTS). Normal
+  repairs need it (the report waits and goes in on sign-in); questions, emergencies, no heat and "Talk to a
+  person" never do. Names/emails are never sent to the AI and students are never emailed. The pilot would use
+  Avila's Microsoft login. Demo-script rooms must not match a sample ticket's room (duplicates merge).
 - Every email's result is saved on its ticket/question (email_status). Failed ones show on the dashboard with
   a Retry button. Reset demo backs up the database to data/backups/ first (newest 10 kept, git-ignored).
 - Talk to a person: the HUMAN button, English phrases (HUMAN_PATTERN) or the AI's "wants_person" flag (any

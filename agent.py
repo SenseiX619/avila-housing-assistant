@@ -495,10 +495,14 @@ class HousingAgent:
         same = self.tickets.find_open_duplicate(draft["building"], draft["room"], draft["issue"], draft.get("category"))
         if same:
             return self._add_to_existing(same, draft, state)
+        student = state.get("student") or {}
         ticket = self.tickets.create(
             building=draft["building"], room=draft["room"], issue=draft["issue"],
             category=draft.get("category") or "Other", urgency=draft.get("urgency") or "normal",
-            language=language, channel=channel, student_message=draft.get("student_message", ""))
+            language=language, channel=channel, student_message=draft.get("student_message", ""),
+            student_name=student.get("name"), student_email=student.get("email"))
+        if student and not student.get("home"):
+            student["home"] = (ticket["building"], ticket["room"])   # offered as "📍 my room" next time
         state["draft"] = None
         state["my_tickets"].append(ticket["code"])
         state["seen"][ticket["code"]] = ticket["status"]          # watch it: staff updates show up in this chat
@@ -521,7 +525,8 @@ class HousingAgent:
         unless it got more serious (then the ticket's urgency goes up and staff are told).
         Returns the ticket with "duplicate": "mine" or "other", for the reply."""
         state["draft"] = None
-        mine = ticket["code"] in state["my_tickets"]
+        email = (state.get("student") or {}).get("email")
+        mine = ticket["code"] in state["my_tickets"] or (email and ticket.get("student_email") == email)
         urgency = draft.get("urgency") or "normal"
         more_serious = URGENCY_RANK.get(urgency, 0) > URGENCY_RANK.get(ticket["urgency"], 0)
         if not mine or more_serious:
@@ -538,10 +543,12 @@ class HousingAgent:
         hear about it even if the student never answers. One alert per conversation; the place is added later."""
         if state.get("emergency_ticket"):
             return self.tickets.get(state["emergency_ticket"])
+        student = state.get("student") or {}
         ticket = self.tickets.create(
             building=draft.get("building") or NO_LOCATION, room=draft.get("room") or "?", issue=draft["issue"],
             category=draft.get("category") or "Other", urgency="emergency", language=language, channel=channel,
-            student_message=draft.get("student_message", ""))
+            student_message=draft.get("student_message", ""),
+            student_name=student.get("name"), student_email=student.get("email"))
         state["emergency_ticket"] = ticket["code"]
         state["my_tickets"].append(ticket["code"])
         state["seen"][ticket["code"]] = ticket["status"]
@@ -610,6 +617,9 @@ class HousingAgent:
                 ask = f"Got it: {issue}. Where? Tap your hall" + (
                     ', or say it like "Thompson 1214".' if "room" in missing else ".")
                 options = config.BUILDINGS
+                home = (state.get("student") or {}).get("home")
+                if home and "room" in missing:
+                    options = [f"📍 {home[0]}, room {home[1]}", *config.BUILDINGS]
             elif problem:                                   # the problem already gave the hall's room range
                 ask = "Otherwise, what's your room number?" if extra_options else "What's your room number?"
                 options = extra_options
@@ -626,6 +636,15 @@ class HousingAgent:
             return AgentReply(self._say(text, language), kind="ticket", ticket=ticket, calls=[CALL_SAFETY, CALL_911],
                               options=[MY_TICKET, REPAIR, QUESTION])
 
+        if not state.get("student") and (draft.get("urgency") or "normal") != "emergency":
+            # Staff need to know who to contact. The report is kept: sign_in() sends it. Emergencies never wait.
+            text = ("Almost done! To send a repair, please sign in at the top of this page with your Avila email, "
+                    "so housing staff know who to contact. Your report is saved: it goes in as soon as you sign in.")
+            return AgentReply(self._say(text, language), kind="sign_in")
+        return self._finish_repair(draft, language, state, channel)
+
+    def _finish_repair(self, draft: dict, language: str, state: dict, channel: str) -> AgentReply:
+        """Hall, room and problem are known: correct a misheard room, add to an open ticket, or create one."""
         corrected = self._correct_room(draft, state)
         if corrected:
             text = (f"Fixed! Ticket {corrected['code']} is now for room {corrected['room']} in "
@@ -751,6 +770,30 @@ class HousingAgent:
             text = f"Sorry it's still not fixed. I've reopened ticket {code} and told housing staff."
             self._email(ticket, update="REOPENED - the student says it's still not fixed")
         return AgentReply(self._say(text, language), kind="status", ticket=ticket, options=[MY_TICKET, REPAIR, QUESTION])
+
+    # ---------- student sign-in ----------
+    def sign_in(self, state: dict, name: str, email: str, home: tuple | None = None) -> list[AgentReply]:
+        """The student signed in (name + Avila email). Their earlier tickets come back (any device), and a repair
+        that was waiting for the sign-in is sent now. Returns the chat messages to show."""
+        state.setdefault("my_tickets", [])
+        state.setdefault("seen", {})
+        state["student"] = {"name": name.strip(), "email": email.strip().lower(), "home": home}
+        earlier = self.tickets.tickets_for_student(email)
+        state["my_tickets"] = [t["code"] for t in earlier if t["code"] not in state["my_tickets"]] + state["my_tickets"]
+        for ticket in earlier:
+            state["seen"].setdefault(ticket["code"], ticket["status"])
+        if earlier and not home:
+            state["student"]["home"] = (earlier[-1]["building"], earlier[-1]["room"])
+        language = state.get("language", "English")
+        open_count = sum(t["status"] != "Resolved" for t in earlier)
+        text = f"Hi {name.split()[0]}! You're signed in." + (
+            f" You have {open_count} open ticket{'s' if open_count != 1 else ''}: tap Check my ticket." if open_count else "")
+        replies = [AgentReply(self._say(text, language), kind="smalltalk", options=[REPAIR, MY_TICKET, QUESTION])]
+        draft = state.get("draft") or {}
+        if all(draft.get(k) for k in ("issue", "building", "room")):          # the repair that was waiting
+            replies.append(self._finish_repair(draft, language, state, "text"))
+        write_log({"event": "sign_in", "sent_waiting_repair": len(replies) > 1})   # no name/email in the log
+        return replies
 
     # ---------- "Talk to a person": the handoff to housing staff ----------
     def _handle_human_request(self, message: str, language: str, state: dict, channel: str) -> AgentReply:

@@ -768,3 +768,34 @@ have crashed Reset demo if a backup was open in another program. Now it just kee
 screen, the backup holds the old tickets, only 10 kept). Upgraded a copy of the real database (8 tickets, all
 kept, "Open" -> "Submitted") and reset it: the backup held all 8. In the practice copy at projector size:
 the warning and the Retry button show.
+
+---
+
+## v1.23-sign-in - Students sign in to report repairs; sample data says so
+
+**Why (Sensei, Nov 20, for the Dec 9 presentation to the president, the dean and the faculty heads):**
+"How do we make it so the student signs in as well?" Staff need to know who reported a repair, and leaders
+will ask "can't anyone pretend to be a student?".
+
+**What:**
+- **Sign in** at the top of the chat: name + @avila.edu email, or one tap on a **made-up demo student**
+  (Maria · Thompson 1230, Jordan · Wylie 1460, Sam · Buchanan 520). No password yet: the pilot would use Avila's
+  Microsoft login, which needs Avila IT and a fixed web address.
+- **Repairs need it; nothing else does.** A guest who reports a leak gets "please sign in", the sign-in box opens,
+  and the report goes in the moment they sign in. Questions, emergencies (and no heat), and "Talk to a person"
+  never need a sign-in, and the emergency numbers now sit on the page itself (phones hide the sidebar).
+- Signed in: tickets show who reported them (dashboard "Student" column, staff email "Reported by"), "Check my
+  ticket" finds their tickets on any device, and their room is one tap ("📍 Thompson Hall, room 1230").
+- Privacy: names and emails are never sent to the AI, never written to the conversation log, and students are
+  never emailed (a made-up address can't reach a real person).
+- **"🧪 Sample data" note** on the dashboard whenever Reset demo's made-up tickets are showing, so nobody
+  takes the sample numbers for real results.
+
+**What broke along the way:** the README demo script used Wylie 1408 and Buchanan 502 - the same rooms as sample
+tickets - so since v1.20 those demo repairs would have said "This was already reported". The demo script now
+uses rooms with no sample ticket (checked by a test). The demo student buttons were cut off on narrow screens;
+they now use first names.
+
+**Tested:** 117 offline checks (10 new). A full dry run of the new demo script with the real AI (temporary
+database, no emails): every step worked, from the guest question to "Did that fix it?" and Talk to a person.
+In the practice copy: the sign-in box, Maria's one-tap sign-in, and the Sample data note.
