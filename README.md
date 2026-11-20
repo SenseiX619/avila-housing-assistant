@@ -136,6 +136,13 @@ That's fine for a demo; a real Avila rollout would use a hosted database.
 
 ---
 
+## Backups and failed emails
+
+- **Reset demo saves a backup first**, in `data/backups/` (the newest 10 are kept; they never go to GitHub).
+  To undo a reset: close the app, copy the backup you want over `data/tickets.db`, start the app again.
+- **If an email to staff fails** (no internet, wrong Gmail app password), the ticket is still saved and on the
+  dashboard, and a yellow warning names it. Fix the cause, then click **📧 Retry emails**.
+
 ## Privacy and safety
 
 - Uses **public** Avila information only. No student records, grades or IDs (FERPA-aware by design).
@@ -181,6 +188,7 @@ Every step is a Git tag. Read `BUILD_LOG.md` alongside:
 | `v1.19-summary` | "How we're doing": response time, time to fix, fixed on time, confirmed; requests by building |
 | `v1.20-no-duplicates` | The same problem reported twice joins the open ticket ("2 reports") instead of a second one |
 | `v1.21-talk-to-a-person` | "Talk to a person": the question goes to staff (Q-1001), their answer appears in the chat |
+| `v1.22-safety-nets` | Failed staff emails show on the dashboard with a Retry button; Reset demo backs up first |
 
 ```
 git checkout v0.3-qa-chat          # see the app as it was at that step

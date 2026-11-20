@@ -506,12 +506,14 @@ class HousingAgent:
         self._email(ticket)
         return ticket
 
-    @staticmethod
-    def _email(ticket: dict, update: str = "") -> None:
-        """Email the ticket to housing staff (in the background; the result goes to the conversation log)."""
-        notify.send_ticket_email(ticket, update=update, on_done=lambda result: write_log(
-            {"event": "ticket_email", "ticket": ticket["code"], "update": update or None,
-             "to": config.TICKET_EMAIL_TO, "result": result}))
+    def _email(self, ticket: dict, update: str = "") -> None:
+        """Email the ticket to housing staff, in the background. The result ("sent" / "failed: ...") is saved on
+        the ticket, so a failed email shows on the dashboard, and goes to the conversation log."""
+        def done(result: str) -> None:
+            self.tickets.record_email(ticket["code"], result)
+            write_log({"event": "ticket_email", "ticket": ticket["code"], "update": update or None,
+                       "to": config.TICKET_EMAIL_TO, "result": result})
+        notify.send_ticket_email(ticket, update=update, on_done=done)
 
     def _add_to_existing(self, ticket: dict, draft: dict, state: dict) -> dict:
         """The same problem is already an open ticket in that room: no second ticket. A roommate's report is
@@ -776,8 +778,10 @@ class HousingAgent:
         code = handoff["code"]
         state["questions"][code] = "Waiting"
         state.pop("last_question", None)
-        notify.send_handoff_email(handoff, on_done=lambda result: write_log(
-            {"event": "handoff_email", "request": code, "to": config.TICKET_EMAIL_TO, "result": result}))
+        def done(result: str) -> None:              # saved on the request too, so a failure shows on the dashboard
+            self.tickets.record_email(code, result)
+            write_log({"event": "handoff_email", "request": code, "to": config.TICKET_EMAIL_TO, "result": result})
+        notify.send_handoff_email(handoff, on_done=done)
         text = (f"I've sent your question to housing staff (request {code}). Keep this chat open and their answer "
                 f"will appear right here. You can also email {config.HOUSING_EMAIL}. If it's urgent, call Campus "
                 f"Safety at {config.CAMPUS_SAFETY_PHONE}.")

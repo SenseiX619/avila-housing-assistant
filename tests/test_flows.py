@@ -588,7 +588,7 @@ class AgentFlows(unittest.TestCase):
                           VALUES ('AV-1001', '2026-11-01T10:00:00', '2026-11-01T10:00:00', 'Wylie Hall', '1450',
                                   'Sink leaking', 'normal', 'Open')""")
         t = TicketStore(path).get("AV-1001")
-        self.assertEqual((t["status"], t["assigned_to"], t["reports"]), ("Submitted", None, 1))
+        self.assertEqual((t["status"], t["assigned_to"], t["reports"], t["email_status"]), ("Submitted", None, 1, None))
 
     def test_status_says_who_has_it(self):
         """(e) status -> 'Assigned to Plumbing', then 'In Progress (Plumbing is on it)'"""
@@ -825,6 +825,50 @@ class AgentFlows(unittest.TestCase):
         email = notify.handoff_email(handoff)
         self.assertIn(handoff["code"], email["Subject"])
         self.assertIn("Can I paint an accent wall?", email.get_content())
+
+    # ---------- step 8: failed emails are visible; Reset demo backs up first ----------
+    @staticmethod
+    def email_result(result):
+        """Stand-in for the emailer that 'sends' at once and reports this result."""
+        return lambda item, on_done=None, **kwargs: on_done(result)
+
+    def test_failed_ticket_email_is_saved_on_the_ticket(self):
+        """no internet -> the ticket is still saved, and remembers its email failed (for the dashboard)"""
+        with mock.patch.object(notify, "send_ticket_email", side_effect=self.email_result("failed: OSError: no internet")):
+            for message in (agent.REPAIR, "💧 Leak / plumbing", "Wylie Hall", "1450"):
+                ticket = self.say(message).ticket
+        saved = self.store.get(ticket["code"])
+        self.assertEqual(saved["email_status"], "failed: OSError: no internet")
+        failed_tickets, failed_questions = self.store.failed_emails()
+        self.assertEqual(([t["code"] for t in failed_tickets], failed_questions), ([ticket["code"]], []))
+
+    def test_sent_ticket_email_is_saved_too(self):
+        with mock.patch.object(notify, "send_ticket_email", side_effect=self.email_result("sent")):
+            for message in (agent.REPAIR, "💧 Leak / plumbing", "Wylie Hall", "1450"):
+                ticket = self.say(message).ticket
+        self.assertEqual(self.store.get(ticket["code"])["email_status"], "sent")
+        self.assertEqual(self.store.failed_emails(), ([], []))
+
+    def test_failed_question_email_is_saved(self):
+        with mock.patch("llm.chat_json", return_value=ai_said("question")), \
+             mock.patch.object(notify, "send_handoff_email", side_effect=self.email_result("failed: timeout")):
+            self.say("Can I talk to my RA about a roommate conflict that keeps getting worse?")
+        self.assertEqual([h["code"] for h in self.store.failed_emails()[1]], [self.store.handoffs()[0]["code"]])
+
+    def test_reset_demo_backs_up_first(self):
+        """Reset demo saves a copy of the old tickets in backups/ first, and keeps the newest 10"""
+        import sqlite3
+        import tickets as ticket_module
+        self.store.create("Wylie Hall", "1450", "A real-looking ticket staff would hate to lose")
+        saved = self.store.reset_demo()
+        self.assertEqual(saved.parent.name, "backups")
+        copy = sqlite3.connect(saved)                    # (closed straight after: Windows can't delete open files)
+        issues = [row[0] for row in copy.execute("SELECT issue FROM tickets")]
+        copy.close()
+        self.assertEqual(issues, ["A real-looking ticket staff would hate to lose"])
+        for _ in range(ticket_module.KEEP_BACKUPS + 2):
+            self.store.reset_demo()
+        self.assertEqual(len(list(saved.parent.glob("tickets-before-reset-*.db"))), ticket_module.KEEP_BACKUPS)
 
     def test_ticket_email_content_and_sending(self):
         """the email says what, where, how urgent and the deadline, and goes to TICKET_EMAIL_TO"""
@@ -1063,6 +1107,29 @@ class Screens(unittest.TestCase):
         self.assertFalse(at.exception, at.exception)
         self.assertIn(f"Housing staff answered your question ({code}): Your RA will meet you tonight at 7.",
                       self.last_reply(at))
+
+    def test_failed_emails_warning_and_retry_on_the_dashboard(self):
+        """a failed email shows as a warning naming the ticket; Retry sends it again and the warning goes"""
+        store = TicketStore()
+        code = store.create("Wylie Hall", "1450", "Sink leaking")["code"]
+        store.record_email(code, "failed: SMTPAuthenticationError: (535, b'Username and Password not accepted')")
+        board = self.dashboard()
+        warnings = " ".join(w.value for w in board.warning)
+        self.assertIn(f"The email to staff failed for {code}", warnings)
+        self.assertIn("Gmail rejected the email login", warnings, "the reason in plain words")
+        with mock.patch.object(notify, "send_ticket_email",
+                               side_effect=lambda ticket, on_done=None, **kw: on_done("sent")) as send:
+            next(b for b in board.button if b.label == "📧 Retry emails").click().run()
+        self.assertFalse(board.exception, board.exception)
+        self.assertEqual(send.call_args.args[0]["code"], code)
+        self.assertEqual(store.get(code)["email_status"], "sent")
+        board.run()
+        self.assertFalse(any("email to staff failed" in w.value for w in board.warning))
+
+    def test_reset_demo_says_where_the_backup_is(self):
+        board = self.dashboard()
+        next(b for b in board.button if b.label == "Yes, reset the demo").click().run()
+        self.assertTrue(any("Backup saved: data/backups/tickets-before-reset-" in s.value for s in board.success))
 
     def test_emergency_alert_on_the_dashboard(self):
         """(d) on screen: an emergency shows as a red alert at the top of the dashboard"""

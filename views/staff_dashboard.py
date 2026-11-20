@@ -12,6 +12,7 @@ import pandas as pd
 import streamlit as st
 
 import config
+import notify
 from phone_link import show_qr
 from tickets import STATUSES, TicketStore, nice_hours, summary
 
@@ -60,17 +61,22 @@ with st.sidebar:
     # Two clicks on purpose (open, then confirm), so a stray click on stage can't wipe the board.
     with st.popover("🔄 Reset demo", type="primary", width="stretch"):
         st.write("Deletes **all** tickets, numbers them from AV-1001 again, "
-                 "and loads 12 clearly-fake sample tickets with a history (some fixed, one reopened).")
+                 "and loads 12 clearly-fake sample tickets with a history (some fixed, one reopened). "
+                 "A backup copy of everything is saved first, in data/backups.")
         if st.button("Yes, reset the demo", type="primary", width="stretch"):
-            store.reset_demo()
-            st.session_state.reset_done = len(store.all())
+            saved = store.reset_demo()
+            st.session_state.reset_done = (len(store.all()), saved.name)
             st.rerun()
         if st.button("Delete all tickets (no samples)", width="stretch"):
             store.reset_demo()
             store.clear()
             st.rerun()
-    if reset_count := st.session_state.pop("reset_done", 0):
-        st.success(f"Demo reset: {reset_count} sample tickets. The next new ticket is AV-{1001 + reset_count}.")
+    if reset := st.session_state.pop("reset_done", None):
+        count, backup_name = reset
+        st.success(f"Demo reset: {count} sample tickets. The next new ticket is AV-{1001 + count}. "
+                   f"Backup saved: data/backups/{backup_name}")
+    if not notify.is_configured():
+        st.caption("📧 Emails to staff are off (no email settings in .env). Tickets still save and show here.")
 
 
 def badge(t: dict) -> str:
@@ -86,6 +92,41 @@ def badge(t: dict) -> str:
     return "🟠 Urgent" if t["urgency"] == "urgent" else "🟣 On track"
 
 
+def plain_reason(status: str) -> str:
+    """'failed: gaierror: [Errno 11001] getaddrinfo failed' -> 'no internet connection'."""
+    text = status.lower()
+    if "getaddrinfo" in text or "network is unreachable" in text or "no internet" in text:
+        return "no internet connection"
+    if "authentication" in text or "username and password" in text:
+        return "Gmail rejected the email login - check SMTP_APP_PASSWORD in .env"
+    if "timed out" in text or "timeout" in text:
+        return "the email server didn't answer in time"
+    return status.removeprefix("failed: ")[:120]
+
+
+def email_problems() -> None:
+    """A ticket whose email to staff failed is still saved and on this board - but nobody got the email.
+    Say so, and offer to send them again."""
+    failed_tickets, failed_questions = store.failed_emails()
+    codes = [t["code"] for t in failed_tickets] + [h["code"] for h in failed_questions]
+    if not codes:
+        return
+    reason = plain_reason((failed_tickets or failed_questions)[0]["email_status"])
+    left, right = st.columns([4, 1])
+    left.warning(f"📧 **The email to staff failed for {', '.join(codes)}.** They're saved here, but nobody was "
+                 f"emailed. ({reason}) Check the internet and the email settings in .env, then retry.")
+    if right.button("📧 Retry emails", key="retry_emails", width="stretch"):
+        for ticket in failed_tickets:
+            store.record_email(ticket["code"], "retrying")          # off the warning until the result comes back
+            notify.send_ticket_email(ticket, update="Resent after a failed email",
+                                     on_done=lambda result, code=ticket["code"]: store.record_email(code, result))
+        for question in failed_questions:
+            store.record_email(question["code"], "retrying")
+            notify.send_handoff_email(question,
+                                      on_done=lambda result, code=question["code"]: store.record_email(code, result))
+        st.toast(f"Sending {len(codes)} email{'s' if len(codes) > 1 else ''} again...")
+
+
 @st.fragment(run_every=5)
 def live_board() -> None:
     tickets = store.all()
@@ -98,6 +139,7 @@ def live_board() -> None:
     if waiting:
         st.warning(f"🙋 **{len(waiting)} student{'s' if len(waiting) > 1 else ''} waiting for a person** - "
                    f"answer below, under Questions for a person.")
+    email_problems()
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Open tickets", len(open_tickets))

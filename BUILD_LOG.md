@@ -741,3 +741,30 @@ backup for when the AI is down).
 real person?" -> asks -> Q-1001; a Spanish request -> Spanish reply, saved in English + Spanish; "Is there a
 24-hour gym in Wylie?" -> "not sure" -> one tap -> Q-1003. In the practice copy: the waiting alert and the
 answer box show on the dashboard.
+
+---
+
+## v1.22-safety-nets - Failed emails are visible, and Reset demo can be undone
+
+**What was missing (found in the Nov 13 audit):**
+1. When an email to staff failed (no internet, a wrong Gmail app password), the ticket was saved, but the
+   only trace was a line in the conversation log. Nobody would notice that staff never got it.
+2. Reset demo deleted every ticket for good. One wrong click on the real tickets and they were gone.
+
+**Fix:**
+- Every ticket and question remembers what happened to its email (`email_status`: "sent" or "failed: ...").
+- The dashboard shows a yellow warning when any failed: "📧 The email to staff failed for AV-1013. They're saved
+  here, but nobody was emailed. (no internet connection)". The reason is in plain words (no internet, Gmail
+  rejected the login, timed out). **📧 Retry emails** sends them again.
+- When email isn't set up at all, the sidebar says so.
+- **Reset demo backs up first:** a full copy of the database goes to `data/backups/` (SQLite's own backup, safe
+  while the app runs). The newest 10 are kept, and the folder is git-ignored. The success message names the
+  backup. README: how to restore one.
+
+**What broke along the way:** on Windows a file that's open can't be deleted, so deleting old backups could
+have crashed Reset demo if a backup was open in another program. Now it just keeps that file.
+
+**Tested:** 107 offline checks (6 new: failed/sent recorded on tickets and questions, the warning + Retry on
+screen, the backup holds the old tickets, only 10 kept). Upgraded a copy of the real database (8 tickets, all
+kept, "Open" -> "Submitted") and reset it: the backup held all 8. In the practice copy at projector size:
+the warning and the Retry button show.

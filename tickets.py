@@ -20,9 +20,11 @@ COLUMNS = ["id", "code", "created_at", "updated_at", "building", "room", "issue"
 # -> Resolved (staff say it's fixed). The student then confirms: student_feedback = "fixed", or "not fixed",
 # which reopens it.
 STATUSES = ["Submitted", "Assigned", "In Progress", "Resolved"]
-# Added later (v1.18, v1.20): older databases get them automatically. "reports" = how many students reported it.
+# Added later (v1.18, v1.20, v1.22): older databases get them automatically. "reports" = how many students
+# reported it; "email_status" = what happened to the email to staff ("sent" / "failed: ..."; empty = email off).
 NEW_COLUMNS = {"assigned_to": "TEXT", "assigned_at": "TEXT", "resolved_at": "TEXT", "student_feedback": "TEXT",
-               "reports": "INTEGER DEFAULT 1"}
+               "reports": "INTEGER DEFAULT 1", "email_status": "TEXT"}
+KEEP_BACKUPS = 10                      # Reset demo keeps this many copies of the database in data/backups
 URGENCY_RANK = {"normal": 0, "urgent": 1, "emergency": 2}
 
 
@@ -48,10 +50,7 @@ class TicketStore:
                     student_message TEXT
                 )""")
             # Databases made before v1.18 lack the new columns and say "Open": bring them up to date.
-            have = {row["name"] for row in db.execute("PRAGMA table_info(tickets)")}
-            for column, kind in NEW_COLUMNS.items():
-                if column not in have:
-                    db.execute(f"ALTER TABLE tickets ADD COLUMN {column} {kind}")
+            self._add_missing_columns(db, "tickets", NEW_COLUMNS)
             db.execute("UPDATE tickets SET status = 'Submitted' WHERE status = 'Open'")
             # Questions a student wants a person to answer ("Talk to a person"), numbered Q-1001, Q-1002...
             db.execute("""
@@ -66,6 +65,14 @@ class TicketStore:
                     answer      TEXT,
                     answered_at TEXT
                 )""")
+            self._add_missing_columns(db, "handoffs", {"email_status": "TEXT"})
+
+    @staticmethod
+    def _add_missing_columns(db, table: str, columns: dict) -> None:
+        have = {row["name"] for row in db.execute(f"PRAGMA table_info({table})")}
+        for column, kind in columns.items():
+            if column not in have:
+                db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {kind}")
 
     def _connect(self):
         # a fresh connection per call keeps it safe with Streamlit's threads
@@ -237,14 +244,51 @@ class TicketStore:
                 "resolved_at": at(timedelta(days=days_to_fix)) if days_to_fix else None,
                 "updated_at": at(timedelta(days=days_to_fix or 0, hours=hours_to_assign or 0))})
 
+    # ---------- emails to staff: remember whether each one got through ----------
+    def record_email(self, code: str, result: str) -> None:
+        """result = "sent" or "failed: ...". Called from the background email thread (its own connection)."""
+        table = "handoffs" if code.upper().startswith("Q-") else "tickets"
+        with self._connect() as db:
+            db.execute(f"UPDATE {table} SET email_status = ? WHERE code = ?", (result[:300], code.upper()))
+
+    def failed_emails(self) -> tuple[list[dict], list[dict]]:
+        """Tickets and questions whose email to staff failed: (tickets, questions)."""
+        failed = lambda row: (row.get("email_status") or "").startswith("failed")
+        return [t for t in self.all() if failed(t)], [h for h in self.handoffs() if failed(h)]
+
+    # ---------- backups ----------
+    def backup(self) -> Path:
+        """Copy the whole database into data/backups/ (SQLite's own backup, safe even while the app runs).
+        Keeps the newest KEEP_BACKUPS copies. To restore one: stop the app, copy it over data/tickets.db."""
+        folder = self.db_path.parent / "backups"
+        folder.mkdir(exist_ok=True)
+        stamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        target, n = folder / f"tickets-before-reset-{stamp}.db", 1
+        while target.exists():                                  # two resets in the same second
+            target, n = folder / f"tickets-before-reset-{stamp}-{n}.db", n + 1
+        source, copy = sqlite3.connect(self.db_path), sqlite3.connect(target)
+        try:
+            source.backup(copy)
+        finally:
+            source.close()
+            copy.close()
+        for old in sorted(folder.glob("tickets-before-reset-*.db"), key=lambda f: f.stat().st_mtime)[:-KEEP_BACKUPS]:
+            try:
+                old.unlink()
+            except OSError:                 # open in another program (Windows locks it): just keep it for now
+                pass
+        return target
+
     def clear(self) -> None:
         with self._connect() as db:
             db.execute("DELETE FROM tickets")
             db.execute("DELETE FROM handoffs")
 
-    def reset_demo(self) -> None:
-        """Start a demo fresh: delete every ticket, number from AV-1001 again, load the sample tickets.
-        (Deleting tickets alone doesn't reset the numbering - SQLite remembers the last ID.)"""
+    def reset_demo(self) -> Path:
+        """Start a demo fresh: back up the database, delete every ticket, number from AV-1001 again, load the
+        sample tickets. (Deleting tickets alone doesn't reset the numbering - SQLite remembers the last ID.)
+        Returns the backup file."""
+        saved = self.backup()
         with self._connect() as db:
             db.execute("DELETE FROM tickets")
             db.execute("DELETE FROM handoffs")
@@ -253,6 +297,7 @@ class TicketStore:
         # One clearly-fake question waiting for a person, so the "Talk to a person" part shows in a demo.
         self.create_handoff("[SAMPLE] Can I paint an accent wall in my room if I paint it back before move-out?",
                             channel="sample", created_at=datetime.now() - timedelta(hours=2))
+        return saved
 
 
 # Words that don't tell two problems apart ("not working", "my room"...). The rest are compared by their first

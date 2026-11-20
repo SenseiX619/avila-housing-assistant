@@ -17,3 +17,6 @@ data/docs/*.pdf
 .DS_Store
 Thumbs.db
 data/conversation_log.jsonl
+
+# Database copies made by Reset demo
+data/backups/

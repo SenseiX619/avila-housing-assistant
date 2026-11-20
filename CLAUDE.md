@@ -29,6 +29,8 @@ not to rebuild it. I'm learning, so explain every change in plain English.
 - Ticket life: Submitted -> Assigned (to a team, config.ASSIGNEES) -> In Progress -> Resolved, with assigned_at /
   resolved_at times. The student's open chat checks its tickets every 5s and shows staff changes by itself;
   Resolved asks "Did that fix it?": yes = confirmed fixed, no = reopened + staff emailed.
+- Every email's result is saved on its ticket/question (email_status). Failed ones show on the dashboard with
+  a Retry button. Reset demo backs up the database to data/backups/ first (newest 10 kept, git-ignored).
 - Talk to a person: the HUMAN button, English phrases (HUMAN_PATTERN) or the AI's "wants_person" flag (any
   language) send the question to staff (handoffs table, Q-1001, emailed). Staff answer on the dashboard; the answer
   appears in the student's chat. Handbook "not sure" answers offer the button. Danger words still come first.
